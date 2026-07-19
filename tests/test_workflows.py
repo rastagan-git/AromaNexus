@@ -39,6 +39,16 @@ class FakePubChem:
         )
 
 
+class ScriptedPubChem:
+    def __init__(self, results):
+        self.results = results
+        self.calls = []
+
+    def lookup(self, identifier, include_odor=True):
+        self.calls.append((identifier, include_odor))
+        return self.results[identifier]
+
+
 def _silent(*_):
     return None
 
@@ -81,6 +91,120 @@ def test_pubchem_maps_fields_and_sanitizes_remote_text(tmp_path: Path):
     assert output.loc[0, "PubChem CID"] == 240
     assert output.loc[0, "PubChem Odor"].startswith("'")
     assert output.loc[0, "PubChem Source URL"].endswith("/240")
+
+
+def test_pubchem_skip_pattern_excludes_structural_rows_before_lookup(tmp_path: Path):
+    source = tmp_path / "input.xlsx"
+    destination = tmp_path / "pubchem.xlsx"
+    pd.DataFrame({"Name": ["C6", "n-Hexane"]}).to_excel(source, index=False)
+    client = ScriptedPubChem(
+        {
+            "n-Hexane": LookupResult(
+                provider="PubChem",
+                values={"cid": 8058, "cas_numbers": ["110-54-3"]},
+            )
+        }
+    )
+
+    run_pubchem(
+        source,
+        client,
+        output_path=destination,
+        identifier_column="Name",
+        skip_patterns=[r"^C\d+$"],
+        resolved_cas_column="Resolved CAS",
+        checkpoint_every=0,
+        progress=_silent,
+    )
+
+    output = read_table(destination)
+    assert client.calls == [("n-Hexane", True)]
+    assert output.loc[0, "PubChem Status"] == "skipped"
+    assert output.loc[0, "PubChem CAS Resolution"] == "skipped"
+    assert output.loc[0, "PubChem CAS Candidate Count"] == 0
+    assert pd.isna(output.loc[0, "Resolved CAS"])
+    assert output.loc[1, "Resolved CAS"] == "110-54-3"
+
+
+def test_pubchem_separates_lookup_status_from_cas_resolution(tmp_path: Path):
+    source = tmp_path / "input.xlsx"
+    destination = tmp_path / "pubchem.xlsx"
+    identifiers = [
+        "100-52-7",
+        "benzaldehyde",
+        "n-Hexane",
+        "Matched without CAS",
+        "Unavailable",
+    ]
+    pd.DataFrame({"Name": identifiers}).to_excel(source, index=False)
+    client = ScriptedPubChem(
+        {
+            "100-52-7": LookupResult(
+                provider="PubChem",
+                values={"cas_numbers": ["64-17-5", "100-52-7"]},
+            ),
+            "benzaldehyde": LookupResult(
+                provider="PubChem",
+                values={"cas_numbers": ["100-52-7"]},
+            ),
+            "n-Hexane": LookupResult(
+                provider="PubChem",
+                values={"cas_numbers": ["110-54-3", "64-17-5"]},
+            ),
+            "Matched without CAS": LookupResult(provider="PubChem", values={"cid": 999}),
+            "Unavailable": LookupResult.failure(
+                "PubChem", status="not_found", message="No matching record"
+            ),
+        }
+    )
+
+    run_pubchem(
+        source,
+        client,
+        output_path=destination,
+        identifier_column="Name",
+        resolved_cas_column="Resolved CAS",
+        checkpoint_every=0,
+        progress=_silent,
+    )
+
+    output = read_table(destination)
+    assert output["PubChem CAS Resolution"].tolist() == [
+        "query_confirmed",
+        "unique",
+        "multiple",
+        "missing",
+        "not_evaluated",
+    ]
+    assert output["PubChem CAS Candidate Count"].tolist() == [2, 1, 2, 0, 0]
+    assert output.loc[0, "Resolved CAS"] == "100-52-7"
+    assert output.loc[1, "Resolved CAS"] == "100-52-7"
+    assert pd.isna(output.loc[2, "Resolved CAS"])
+    assert pd.isna(output.loc[3, "Resolved CAS"])
+    assert pd.isna(output.loc[4, "Resolved CAS"])
+    assert output.loc[2, "PubChem CAS Numbers"] == "110-54-3; 64-17-5"
+    assert output.loc[4, "PubChem Status"] == "not_found"
+
+
+def test_invalid_pubchem_skip_pattern_fails_before_provider_calls(tmp_path: Path):
+    source = tmp_path / "input.xlsx"
+    destination = tmp_path / "pubchem.xlsx"
+    pd.DataFrame({"Name": ["benzaldehyde"]}).to_excel(source, index=False)
+    client = ScriptedPubChem({})
+
+    with pytest.raises(ValueError):
+        run_pubchem(
+            source,
+            client,
+            output_path=destination,
+            identifier_column="Name",
+            skip_patterns=["["],
+            checkpoint_every=0,
+            progress=_silent,
+        )
+
+    assert client.calls == []
+    assert not destination.exists()
 
 
 def test_existing_output_is_rejected_before_provider_calls(tmp_path: Path):

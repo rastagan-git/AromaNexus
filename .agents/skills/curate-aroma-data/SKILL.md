@@ -12,6 +12,7 @@ Build traceable compound tables through the repository's `aromanexus` CLI. Keep 
 1. Inspect the input without modifying it.
    - Run `python .agents/skills/curate-aroma-data/scripts/inspect_workbook.py INPUT` from the repository root.
    - Confirm the row count, exact column names, identifier quality, duplicates, and formula-like cells.
+   - Identify section labels, headers, totals, and other structural rows before provider calls. Define an explicit dataset-specific skip rule; do not assume that text such as `C6` is globally non-chemical.
 2. Choose the smallest provider set that supplies the requested fields.
    - Read [references/provider-matrix.md](references/provider-matrix.md) before any network or browser operation.
    - Prefer PubChem for canonical identity and sourced odor annotations.
@@ -19,10 +20,11 @@ Build traceable compound tables through the repository's `aromanexus` CLI. Keep 
    - Use Pyrfume only for explicitly selected archives after reviewing each manifest note.
    - Use M2OR only when receptor bioassay evidence is relevant; label species and assay scope.
 3. Preview the operation.
-   - State the input, new output path, selected provider, expected columns, approximate request count, cache behavior, and material access caveats.
+   - State the input, new output path, selected provider, expected columns, skip patterns, approximate request count, cache behavior, and material access caveats.
    - Write a sibling output by default. Do not pass `--force` or overwrite the input unless the user explicitly requests that exact replacement.
 4. Run one focused command.
    - Identity and odor metadata: `aromanexus pubchem INPUT --identifier-column "CAS Number"`
+   - Name lookup with dataset-specific structural rows: `aromanexus pubchem INPUT --identifier-column "Name" --skip-pattern '^C\d+$'`
    - Retention indices: `aromanexus nist-ri INPUT --cas-column "CAS Number" --calculated-ri-column "Calculated RI"`
    - Names to CAS: `aromanexus resolve-cas INPUT --name-column "Name"`
    - Curated descriptors: `aromanexus pyrfume INPUT --archives aromadb,superscent`
@@ -31,6 +33,8 @@ Build traceable compound tables through the repository's `aromanexus` CLI. Keep 
 5. Verify the result.
    - Re-run the inspection script on the output.
    - Confirm identical row order and row count, expected new fields, typed status counts, source URL, retrieval time, version, and license/access fields.
+   - Treat `PubChem Status` as provider execution state, not proof of a uniquely resolved CAS. Check `PubChem CAS Resolution`, candidate count, and `Resolved CAS` separately.
+   - Leave `multiple` and `missing` CAS resolutions unresolved; retain all candidates and route only the affected rows to a targeted fallback source or manual review.
    - Treat `http_error`, `network_error`, `parse_error`, `missing_data`, `data_error`, `partial`, `blocked`, and `skipped` separately from `not_found`.
    - Consult [references/output-schema.md](references/output-schema.md) when reconciling columns or statuses.
 6. Report the output path, provider versions, status counts, partial failures, and any source terms the user must still review.
@@ -43,3 +47,4 @@ Build traceable compound tables through the repository's `aromanexus` CLI. Keep 
 - Do not describe the toolkit as AI-powered. Say that structured exports can support downstream statistics, cheminformatics, or machine-learning experiments.
 - Do not bundle or republish downloaded Pyrfume or M2OR data in the repository.
 - Preserve remote text as literal spreadsheet cells to prevent formula execution.
+- Never select the first PubChem CAS candidate merely because the provider status is `ok`.

@@ -66,6 +66,9 @@ The CLI accepts `.xlsx`, `.csv`, and `.tsv` tables. Column names are configurabl
 # Canonical identity, properties, synonyms, CAS identifiers, and sourced odor text
 aromanexus pubchem compounds.xlsx --identifier-column "CAS Number"
 
+# Skip dataset-specific structural labels before a name lookup
+aromanexus pubchem compounds.xlsx --identifier-column "Name" --skip-pattern '^C\d+$'
+
 # Closest NIST RI to an experimentally calculated RI
 aromanexus nist-ri data.xlsx \
   --cas-column "CAS Number" \
@@ -112,7 +115,7 @@ aromanexus --cache-dir .cache/aromanexus --timeout 30 pubchem compounds.xlsx
 
 Every table command writes a sibling file by default, keeps the original row order and columns, and adds provider fields. For example, `compounds.xlsx` becomes `compounds_pubchem.xlsx` after a PubChem run.
 
-By default, provenance columns include provider status, source URL, retrieval timestamp, cache hit, pinned version, license URL, and a diagnostic message. Use `--no-provenance` only for legacy-shaped output.
+By default, provenance columns include provider status, source URL, retrieval timestamp, cache hit, pinned version, license URL, and a diagnostic message. PubChem reports CAS resolution separately and populates `Resolved CAS` only when the input is a confirmed CAS or exactly one checksum-valid candidate remains. Multiple or missing candidates stay unresolved. Use `--no-provenance` only for legacy-shaped output.
 
 ```bash
 # Choose an output explicitly
