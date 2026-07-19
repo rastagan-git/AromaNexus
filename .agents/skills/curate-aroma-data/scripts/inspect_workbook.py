@@ -1,4 +1,4 @@
-"""Inspect a flavor-data workbook without modifying it."""
+"""Inspect an AromaNexus workbook without modifying it."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from flavor_data_crawler.excel_io import FORMULA_PREFIXES, read_table  # noqa: E402
-from flavor_data_crawler.identifiers import is_valid_cas, normalize_cas  # noqa: E402
+from aromanexus.excel_io import FORMULA_PREFIXES, read_table  # noqa: E402
+from aromanexus.identifiers import is_valid_cas, normalize_cas  # noqa: E402
 
 
 def inspect(path: Path, cas_column: str | None = None) -> dict[str, object]:

@@ -1,13 +1,13 @@
-# Flavor Data Crawler
+# AromaNexus
 
-[![CI](https://github.com/rastagan-git/Flavor-Data-Crawler/actions/workflows/ci.yml/badge.svg)](https://github.com/rastagan-git/Flavor-Data-Crawler/actions/workflows/ci.yml)
+[![CI](https://github.com/rastagan-git/AromaNexus/actions/workflows/ci.yml/badge.svg)](https://github.com/rastagan-git/AromaNexus/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
 
 [English](README.md) · **简体中文**
 
 一套重视数据来源追踪的化学—感官数据整理工具：把化合物工作簿扩充为可核查、可继续分析的数据表。
 
-Flavor Data Crawler 将化学身份、气相色谱保留指数、气味描述、阈值，以及可选的嗅觉受体实验结果串联起来。它会保留原始表格，规范化不同来源的结果，并记录每项扩充数据来自哪里。输出可作为后续统计分析、化学信息学与边界清晰的机器学习实验输入。
+AromaNexus 将化学身份、气相色谱保留指数、气味描述、阈值，以及可选的嗅觉受体实验结果串联起来。它会保留原始表格，规范化不同来源的结果，并记录每项扩充数据来自哪里。输出可作为后续统计分析、化学信息学与边界清晰的机器学习实验输入。
 
 ```text
 XLSX / CSV / TSV
@@ -54,8 +54,8 @@ python -m pip install -e .
 安装后先确认版本并查看所有数据源的访问模式：
 
 ```bash
-flavor-data --version
-flavor-data sources
+aromanexus --version
+aromanexus sources
 ```
 
 ## 快速开始
@@ -64,27 +64,27 @@ CLI 支持 `.xlsx`、`.csv` 和 `.tsv`。列名均可修改；下面使用默认
 
 ```bash
 # 规范化身份、理化性质、同义词、CAS 标识符与带来源的气味文本
-flavor-data pubchem compounds.xlsx --identifier-column "CAS Number"
+aromanexus pubchem compounds.xlsx --identifier-column "CAS Number"
 
 # 在 NIST 中寻找最接近实验计算值的保留指数
-flavor-data nist-ri data.xlsx \
+aromanexus nist-ri data.xlsx \
   --cas-column "CAS Number" \
   --calculated-ri-column "Calculated RI"
 
 # 通过 NIST WebBook 将化合物名称解析为 CAS
-flavor-data resolve-cas names.xlsx --name-column "Name"
+aromanexus resolve-cas names.xlsx --name-column "Name"
 
 # 查询选定的 Pyrfume 集合；缺少 CID 时会通过 PubChem 解析
-flavor-data pyrfume compounds.xlsx --archives aromadb,superscent
+aromanexus pyrfume compounds.xlsx --archives aromadb,superscent
 
 # 可选的分子—嗅觉受体实验依据
-flavor-data m2or compounds.xlsx --cas-column "CAS Number"
+aromanexus m2or compounds.xlsx --cas-column "CAS Number"
 
 # 需要交互浏览器的兼容数据源
-flavor-data mffi compounds.xlsx --cas-column "CAS Number"
+aromanexus mffi compounds.xlsx --cas-column "CAS Number"
 
 # 设有许可门槛的旧版数据源；命令会要求明确确认
-flavor-data chemicalbook-legacy compounds.xlsx --cas-column "CAS Number"
+aromanexus chemicalbook-legacy compounds.xlsx --cas-column "CAS Number"
 ```
 
 在 PowerShell 中，请把多行命令写成一行，或将 Bash 的 `\` 续行符换成 PowerShell 的反引号。
@@ -93,19 +93,19 @@ flavor-data chemicalbook-legacy compounds.xlsx --cas-column "CAS Number"
 
 | 命令 | 默认输入列 | 用途 | 默认输出后缀 |
 | --- | --- | --- | --- |
-| `flavor-data sources` | 无 | 列出数据源、用途和访问方式；`providers` 是别名。 | 无 |
-| `flavor-data nist-ri INPUT` | `CAS Number`、`Calculated RI` | 在原流程指定的 NIST 非极性柱、自定义升温 RI 表中匹配最接近值。 | `_nist_result` |
-| `flavor-data resolve-cas INPUT` | `Name` | 通过 NIST 将无歧义的化合物名称解析为 CAS Registry Number。 | `_with_cas` |
-| `flavor-data pubchem INPUT` | `CAS Number` | 添加 CID、名称、结构标识符、选定性质、同义词、CAS 标识符和带来源的气味注释。 | `_pubchem` |
-| `flavor-data pyrfume INPUT` | `PubChem CID`；若需解析 CID，则用 `CAS Number` | 匹配白名单内的固定版本档案：`aromadb`、`flavornet`、`superscent`；默认 `aromadb,superscent`。 | `_pyrfume` |
-| `flavor-data m2or INPUT` | `CAS Number` | 汇总分子—受体配对、响应配对、物种、人类响应受体和研究 DOI。 | `_m2or` |
-| `flavor-data mffi INPUT` | `CAS Number` | 通过可见 Chrome 获取中英文名、感官特征和水中阈值；确认不需要交互时才使用 `--headless`。 | `_mffi_result` |
-| `flavor-data chemicalbook-legacy INPUT` | `CAS Number` | 保留原有气味、阈值和香型交互流程；在确认有书面许可前禁用。 | `_cb_result` |
+| `aromanexus sources` | 无 | 列出数据源、用途和访问方式；`providers` 是别名。 | 无 |
+| `aromanexus nist-ri INPUT` | `CAS Number`、`Calculated RI` | 在原流程指定的 NIST 非极性柱、自定义升温 RI 表中匹配最接近值。 | `_nist_result` |
+| `aromanexus resolve-cas INPUT` | `Name` | 通过 NIST 将无歧义的化合物名称解析为 CAS Registry Number。 | `_with_cas` |
+| `aromanexus pubchem INPUT` | `CAS Number` | 添加 CID、名称、结构标识符、选定性质、同义词、CAS 标识符和带来源的气味注释。 | `_pubchem` |
+| `aromanexus pyrfume INPUT` | `PubChem CID`；若需解析 CID，则用 `CAS Number` | 匹配白名单内的固定版本档案：`aromadb`、`flavornet`、`superscent`；默认 `aromadb,superscent`。 | `_pyrfume` |
+| `aromanexus m2or INPUT` | `CAS Number` | 汇总分子—受体配对、响应配对、物种、人类响应受体和研究 DOI。 | `_m2or` |
+| `aromanexus mffi INPUT` | `CAS Number` | 通过可见 Chrome 获取中英文名、感官特征和水中阈值；确认不需要交互时才使用 `--headless`。 | `_mffi_result` |
+| `aromanexus chemicalbook-legacy INPUT` | `CAS Number` | 保留原有气味、阈值和香型交互流程；在确认有书面许可前禁用。 | `_cb_result` |
 
-使用 `flavor-data COMMAND --help` 查看列名及数据源专用选项。全局参数必须写在子命令之前：
+使用 `aromanexus COMMAND --help` 查看列名及数据源专用选项。全局参数必须写在子命令之前：
 
 ```bash
-flavor-data --cache-dir .cache/flavor-data --timeout 30 pubchem compounds.xlsx
+aromanexus --cache-dir .cache/aromanexus --timeout 30 pubchem compounds.xlsx
 ```
 
 ### 输出、检查点与覆盖保护
@@ -116,18 +116,18 @@ flavor-data --cache-dir .cache/flavor-data --timeout 30 pubchem compounds.xlsx
 
 ```bash
 # 明确指定输出位置
-flavor-data pubchem compounds.xlsx --output results/compounds_enriched.xlsx
+aromanexus pubchem compounds.xlsx --output results/compounds_enriched.xlsx
 
 # 每处理 10 行保存一次恢复检查点；设为 0 可关闭
-flavor-data pubchem compounds.xlsx --checkpoint-every 10
+aromanexus pubchem compounds.xlsx --checkpoint-every 10
 
 # 明确覆盖一个已存在的目标文件
-flavor-data pubchem compounds.xlsx --output compounds_pubchem.xlsx --force
+aromanexus pubchem compounds.xlsx --output compounds_pubchem.xlsx --force
 ```
 
 检查点形如 `compounds_pubchem.partial.xlsx`：运行期间定期刷新，中断后保留，最终文件写入成功后删除。若目标文件已存在，命令会停止，除非显式传入 `--force`。建议输出到新文件，不要直接覆盖输入。
 
-成功的 HTTP 响应与下载快照默认缓存到 `~/.cache/flavor-data-crawler`。如需更改位置，请在子命令之前传入 `--cache-dir`。
+成功的 HTTP 响应与下载快照默认缓存到 `~/.cache/aromanexus`。如需更改位置，可设置 `AROMANEXUS_CACHE_DIR`，或在子命令之前传入 `--cache-dir`；更名前的缓存环境变量仍可兼容使用。
 
 ## 数据来源、访问方式与权利边界
 
@@ -144,10 +144,10 @@ flavor-data pubchem compounds.xlsx --output compounds_pubchem.xlsx --force
 
 ## Codex 项目 Skill
 
-仓库内置了项目级 Skill：`.agents/skills/curate-flavor-data/`。在 Codex 中可直接调用：
+仓库内置了项目级 Skill：`.agents/skills/curate-aroma-data/`。在 Codex 中可直接调用：
 
 ```text
-$curate-flavor-data
+$curate-aroma-data
 ```
 
 该 Skill 会检查工作簿、选择满足需求的最小数据源组合、预览访问及输出影响、执行一个聚焦命令，并核对行数、结构、状态和来源记录。它只是本软件包之上的流程编排指南，不是另一套爬虫，也不会自动赋予数据使用权。
@@ -155,10 +155,12 @@ $curate-flavor-data
 也可以直接运行其中只读的工作簿检查工具：
 
 ```bash
-python .agents/skills/curate-flavor-data/scripts/inspect_workbook.py compounds.xlsx
+python .agents/skills/curate-aroma-data/scripts/inspect_workbook.py compounds.xlsx
 ```
 
 ## 旧版兼容入口
+
+更名前的 `flavor-data` 命令与 `flavor_data_crawler` Python 命名空间继续作为兼容别名。新集成建议使用 `aromanexus`，现有自动化无需立刻重写。
 
 原有脚本与 Windows 启动器仍然保留，继续支持固定的工作簿布局：
 

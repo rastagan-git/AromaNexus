@@ -1,10 +1,10 @@
 """Permission-gated legacy launcher for the original ChemicalBook workflow."""
 
-from flavor_data_crawler.sources.chemicalbook import (
+from aromanexus.sources.chemicalbook import (
     PERMISSION_PHRASE,
     ChemicalBookLegacyClient,
 )
-from flavor_data_crawler.workflows import run_chemicalbook_legacy
+from aromanexus.workflows import run_chemicalbook_legacy
 
 INPUT_FILE = "Odor.xlsx"
 COL_CAS = "CAS Number"

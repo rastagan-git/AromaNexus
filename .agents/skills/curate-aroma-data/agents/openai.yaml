@@ -1,0 +1,4 @@
+interface:
+  display_name: "Curate Aroma Data"
+  short_description: "Curate traceable odorant and flavor datasets"
+  default_prompt: "Use $curate-aroma-data to inspect and enrich this odorant workbook with source provenance."

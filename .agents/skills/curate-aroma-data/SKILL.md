@@ -1,16 +1,16 @@
 ---
-name: curate-flavor-data
-description: Validate, normalize, enrich, and export flavor, odor, aroma, and chemical-sensory datasets with source-level provenance. Use for XLSX, CSV, or TSV workbooks containing CAS numbers, compound names, calculated retention indices, sensory descriptors, odor thresholds, or olfactory-receptor evidence; for selecting among NIST, PubChem, Pyrfume, M2OR, MFFI, and the permission-gated ChemicalBook compatibility connector; and for verifying analysis-ready outputs. Do not use to bypass access controls, relicense source data, or make biomedical or machine-learning claims unsupported by the exported evidence.
+name: curate-aroma-data
+description: Use AromaNexus to validate, normalize, enrich, and export flavor, odor, aroma, and chemical-sensory datasets with source-level provenance. Use for XLSX, CSV, or TSV workbooks containing CAS numbers, compound names, calculated retention indices, sensory descriptors, odor thresholds, or olfactory-receptor evidence; for selecting among NIST, PubChem, Pyrfume, M2OR, MFFI, and the permission-gated ChemicalBook compatibility connector; and for verifying analysis-ready outputs. Do not use to bypass access controls, relicense source data, or make biomedical or machine-learning claims unsupported by the exported evidence.
 ---
 
-# Curate Flavor Data
+# Curate Aroma Data
 
-Build traceable compound tables through the repository's `flavor-data` CLI. Keep the skill as an orchestration layer; modify provider behavior in the Python package, not here.
+Build traceable compound tables through the repository's `aromanexus` CLI. Keep the skill as an orchestration layer; modify provider behavior in the Python package, not here.
 
 ## Workflow
 
 1. Inspect the input without modifying it.
-   - Run `python .agents/skills/curate-flavor-data/scripts/inspect_workbook.py INPUT` from the repository root.
+   - Run `python .agents/skills/curate-aroma-data/scripts/inspect_workbook.py INPUT` from the repository root.
    - Confirm the row count, exact column names, identifier quality, duplicates, and formula-like cells.
 2. Choose the smallest provider set that supplies the requested fields.
    - Read [references/provider-matrix.md](references/provider-matrix.md) before any network or browser operation.
@@ -22,12 +22,12 @@ Build traceable compound tables through the repository's `flavor-data` CLI. Keep
    - State the input, new output path, selected provider, expected columns, approximate request count, cache behavior, and material access caveats.
    - Write a sibling output by default. Do not pass `--force` or overwrite the input unless the user explicitly requests that exact replacement.
 4. Run one focused command.
-   - Identity and odor metadata: `flavor-data pubchem INPUT --identifier-column "CAS Number"`
-   - Retention indices: `flavor-data nist-ri INPUT --cas-column "CAS Number" --calculated-ri-column "Calculated RI"`
-   - Names to CAS: `flavor-data resolve-cas INPUT --name-column "Name"`
-   - Curated descriptors: `flavor-data pyrfume INPUT --archives aromadb,superscent`
-   - Receptor evidence: `flavor-data m2or INPUT --cas-column "CAS Number"`
-   - Source inventory: `flavor-data sources`
+   - Identity and odor metadata: `aromanexus pubchem INPUT --identifier-column "CAS Number"`
+   - Retention indices: `aromanexus nist-ri INPUT --cas-column "CAS Number" --calculated-ri-column "Calculated RI"`
+   - Names to CAS: `aromanexus resolve-cas INPUT --name-column "Name"`
+   - Curated descriptors: `aromanexus pyrfume INPUT --archives aromadb,superscent`
+   - Receptor evidence: `aromanexus m2or INPUT --cas-column "CAS Number"`
+   - Source inventory: `aromanexus sources`
 5. Verify the result.
    - Re-run the inspection script on the output.
    - Confirm identical row order and row count, expected new fields, typed status counts, source URL, retrieval time, version, and license/access fields.

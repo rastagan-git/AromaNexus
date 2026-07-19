@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from flavor_data_crawler.sources.m2or import (
+from aromanexus.sources.m2or import (
     M2OR_FILENAME,
     M2OR_LICENSE_URL,
     M2OR_VERSION,

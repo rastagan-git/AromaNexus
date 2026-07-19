@@ -3,9 +3,9 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "flavor-data-crawler"
-version = "0.2.0"
-description = "Provenance-aware enrichment for retention-index, odorant, and olfactory-receptor data"
+name = "aromanexus"
+version = "0.3.0"
+description = "Provenance-aware integration for odorant, flavor-molecule, and olfactory-receptor data"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -27,6 +27,10 @@ classifiers = [
 ]
 keywords = ["cheminformatics", "flavor", "odorant", "olfaction", "retention-index"]
 
+[project.urls]
+Repository = "https://github.com/rastagan-git/AromaNexus"
+Issues = "https://github.com/rastagan-git/AromaNexus/issues"
+
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0",
@@ -35,10 +39,11 @@ dev = [
 ]
 
 [project.scripts]
-flavor-data = "flavor_data_crawler.cli:main"
+aromanexus = "aromanexus.cli:main"
+flavor-data = "aromanexus.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["flavor_data_crawler*"]
+include = ["aromanexus*", "flavor_data_crawler*"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"

@@ -4,7 +4,7 @@ import openpyxl
 import pandas as pd
 import pytest
 
-from flavor_data_crawler.excel_io import (
+from aromanexus.excel_io import (
     read_table,
     require_columns,
     sanitize_excel_cell,

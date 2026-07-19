@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from flavor_data_crawler.http import HttpResponse, RetrievalMetadata
-from flavor_data_crawler.sources.pubchem import (
+from aromanexus.http import HttpResponse, RetrievalMetadata
+from aromanexus.sources.pubchem import (
     PubChemClient,
     parse_pubchem_identifiers,
     parse_pubchem_odor,

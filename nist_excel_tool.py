@@ -1,7 +1,7 @@
 """Legacy launcher for the original NIST retention-index workbook workflow."""
 
-from flavor_data_crawler.sources.nist import NistWebBookClient
-from flavor_data_crawler.workflows import run_nist_ri
+from aromanexus.sources.nist import NistWebBookClient
+from aromanexus.workflows import run_nist_ri
 
 INPUT_FILE = "data.xlsx"
 COL_CAS = "CAS Number"

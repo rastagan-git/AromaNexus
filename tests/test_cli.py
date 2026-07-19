@@ -1,4 +1,4 @@
-from flavor_data_crawler.cli import main
+from aromanexus.cli import main
 
 
 def test_sources_command_lists_access_modes(capsys):

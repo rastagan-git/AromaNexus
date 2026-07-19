@@ -1,6 +1,5 @@
-"""Flavor Data Crawler public package."""
+"""Backward-compatible import namespace for AromaNexus 0.2 users."""
 
-from flavor_data_crawler.models import LookupResult
+from aromanexus import LookupResult, __version__
 
-__all__ = ["LookupResult"]
-__version__ = "0.2.0"
+__all__ = ["LookupResult", "__version__"]
