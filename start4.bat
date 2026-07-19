@@ -1,30 +1,19 @@
 @echo off
 cd /d "%~dp0"
+call :find_python
+"%PYTHON_EXE%" cb_spider.py
+pause
+exit /b
 
-echo ==========================================
-echo        ChemicalBook Crawler
-echo ==========================================
-
-:: 激活环境
-if exist myenv\Scripts\activate.bat (
-    call myenv\Scripts\activate.bat
-) else if exist venv\Scripts\activate.bat (
-    call venv\Scripts\activate.bat
-) else (
-    echo [Error] Virtual environment not found.
-    pause
+:find_python
+set "PYTHON_EXE=python"
+if exist ".venv\Scripts\python.exe" (
+    set "PYTHON_EXE=.venv\Scripts\python.exe"
     exit /b
 )
-
-echo.
-echo Checking dependencies...
-:: 确保依赖都装了
-pip install selenium webdriver-manager pandas openpyxl
-
-echo.
-echo Starting Python Script...
-python cb_spider.py
-
-echo.
-echo Process Finished.
-pause
+if exist "myenv\Scripts\python.exe" (
+    set "PYTHON_EXE=myenv\Scripts\python.exe"
+    exit /b
+)
+if exist "venv\Scripts\python.exe" set "PYTHON_EXE=venv\Scripts\python.exe"
+exit /b
