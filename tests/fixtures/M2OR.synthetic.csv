@@ -1,0 +1,7 @@
+;id;species;Mutation;Gene ID;Uniprot ID;Sequence;Name;CID;CAS;InChI Key;canonicalSMILES;Parameter;Value;Unit;Value_Screen;Unit_Screen;Responsive;nbr_measurements;Type;Cell_line;Delivery;Assay;Gprotein;Co_transfection;Assay System;Tag;Reference;DOI;Reference Position;Mixture;Norm_Foreign_Key
+0;pair-1;homo sapiens;;OR1A1;Q00001;;synthetic molecule;;64-17-5;;;;;;;;1;;test;;;;;;;;Synthetic study A;https://doi.org/10.1000/a;;;
+1;experiment-2;homo sapiens;;OR1A1;Q00001;;synthetic molecule;;64-17-5;;;;;;;;0;;test;;;;;;;;Synthetic study A;https://doi.org/10.1000/a;;;
+2;pair-2;homo sapiens;;OR2W1;Q00002;;synthetic molecule;;64-17-5;;;;;;;;true;;test;;;;;;;;Synthetic study B;doi:10.1000/b;;;
+3;pair-3;Mus musculus;;Olfr1;Q00003;;synthetic molecule;;64-17-5;;;;;;;;agonist;;test;;;;;;;;Synthetic study C;10.1000/c;;;
+4;pair-4;homo sapiens;;OR5X1;Q00004;;synthetic molecule;;64-17-5;;;;;;;;0;;test;;;;;;;;Synthetic study D;https://dx.doi.org/10.1000/d;;;
+5;pair-5;homo sapiens;;OR9X1;Q00005;;other molecule;;67-56-1;;;;;;;;1;;test;;;;;;;;Other study;10.1000/other;;;

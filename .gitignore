@@ -1,0 +1,13 @@
+.venv/
+venv/
+myenv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+.flavor-data-cache/
