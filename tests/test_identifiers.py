@@ -1,6 +1,6 @@
 import pytest
 
-from flavor_data_crawler.identifiers import (
+from aromanexus.identifiers import (
     clean_text,
     is_valid_cas,
     normalize_cas,

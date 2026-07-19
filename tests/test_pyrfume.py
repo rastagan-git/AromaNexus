@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from flavor_data_crawler.sources.pyrfume import (
+from aromanexus.sources.pyrfume import (
     ARCHIVE_FILES,
     PYRFUME_DATA_VERSION,
     PyrfumeArchiveClient,

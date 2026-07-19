@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 import requests
 
-from flavor_data_crawler.http import CachedHttpClient, HttpClientError
+from aromanexus.http import CachedHttpClient, HttpClientError
 
 
 @dataclass
@@ -146,7 +146,7 @@ def test_timeout_and_headers_are_forwarded(tmp_path: Any) -> None:
     call = session.calls[0]
     assert call["timeout"] == (2.0, 7.0)
     assert call["headers"]["Accept"] == "application/json"
-    assert call["headers"]["User-Agent"].startswith("Flavor-Data-Crawler/")
+    assert call["headers"]["User-Agent"].startswith("AromaNexus/")
 
 
 def test_request_exception_retries_then_raises_descriptive_error(tmp_path: Any) -> None:

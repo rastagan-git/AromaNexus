@@ -1,5 +1,5 @@
-from flavor_data_crawler.sources.chemicalbook import ChemicalBookLegacyClient
-from flavor_data_crawler.sources.mffi import MffiClient
+from aromanexus.sources.chemicalbook import ChemicalBookLegacyClient
+from aromanexus.sources.mffi import MffiClient
 
 
 class FakeDriver:

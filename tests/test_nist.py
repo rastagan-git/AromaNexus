@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from flavor_data_crawler.http import HttpResponse, RetrievalMetadata
-from flavor_data_crawler.sources.nist import (
+from aromanexus.http import HttpResponse, RetrievalMetadata
+from aromanexus.sources.nist import (
     NistWebBookClient,
     is_nist_search_results,
     parse_nist_cas,

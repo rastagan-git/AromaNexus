@@ -1,7 +1,7 @@
 """Legacy launcher for the original MFFI workbook workflow."""
 
-from flavor_data_crawler.sources.mffi import MffiClient, create_chrome_driver
-from flavor_data_crawler.workflows import run_mffi
+from aromanexus.sources.mffi import MffiClient, create_chrome_driver
+from aromanexus.workflows import run_mffi
 
 INPUT_FILE = "max.xlsx"
 COL_CAS = "CAS Number"

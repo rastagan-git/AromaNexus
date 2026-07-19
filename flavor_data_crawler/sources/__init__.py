@@ -1,1 +1,1 @@
-"""Data-source adapters used by Flavor Data Crawler."""
+"""Compatibility wrappers for AromaNexus provider adapters."""

@@ -3,9 +3,9 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from flavor_data_crawler.excel_io import read_table
-from flavor_data_crawler.models import LookupResult
-from flavor_data_crawler.workflows import run_nist_ri, run_pubchem
+from aromanexus.excel_io import read_table
+from aromanexus.models import LookupResult
+from aromanexus.workflows import run_nist_ri, run_pubchem
 
 
 class FakeNist:

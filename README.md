@@ -1,13 +1,13 @@
-# Flavor Data Crawler
+# AromaNexus
 
-[![CI](https://github.com/rastagan-git/Flavor-Data-Crawler/actions/workflows/ci.yml/badge.svg)](https://github.com/rastagan-git/Flavor-Data-Crawler/actions/workflows/ci.yml)
+[![CI](https://github.com/rastagan-git/AromaNexus/actions/workflows/ci.yml/badge.svg)](https://github.com/rastagan-git/AromaNexus/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
 
 **English** · [简体中文](README-CN.md)
 
 A provenance-aware toolkit for turning compound workbooks into traceable chemical-sensory datasets.
 
-Flavor Data Crawler connects chemical identity, gas-chromatographic retention indices, odor descriptors, thresholds, and optional olfactory-receptor assay evidence. It preserves the original table, normalizes provider results, and records where each enrichment came from. The resulting tables are practical inputs for downstream statistics, cheminformatics, and carefully scoped machine-learning experiments.
+AromaNexus connects chemical identity, gas-chromatographic retention indices, odor descriptors, thresholds, and optional olfactory-receptor assay evidence. It preserves the original table, normalizes provider results, and records where each enrichment came from. The resulting tables are practical inputs for downstream statistics, cheminformatics, and carefully scoped machine-learning experiments.
 
 ```text
 XLSX / CSV / TSV
@@ -54,8 +54,8 @@ python -m pip install -e .
 Confirm the installation and review provider modes before a live run:
 
 ```bash
-flavor-data --version
-flavor-data sources
+aromanexus --version
+aromanexus sources
 ```
 
 ## Quick start
@@ -64,27 +64,27 @@ The CLI accepts `.xlsx`, `.csv`, and `.tsv` tables. Column names are configurabl
 
 ```bash
 # Canonical identity, properties, synonyms, CAS identifiers, and sourced odor text
-flavor-data pubchem compounds.xlsx --identifier-column "CAS Number"
+aromanexus pubchem compounds.xlsx --identifier-column "CAS Number"
 
 # Closest NIST RI to an experimentally calculated RI
-flavor-data nist-ri data.xlsx \
+aromanexus nist-ri data.xlsx \
   --cas-column "CAS Number" \
   --calculated-ri-column "Calculated RI"
 
 # Compound name to CAS through NIST WebBook
-flavor-data resolve-cas names.xlsx --name-column "Name"
+aromanexus resolve-cas names.xlsx --name-column "Name"
 
 # Selected Pyrfume collections; resolves a CID through PubChem if needed
-flavor-data pyrfume compounds.xlsx --archives aromadb,superscent
+aromanexus pyrfume compounds.xlsx --archives aromadb,superscent
 
 # Optional molecule–olfactory-receptor assay evidence
-flavor-data m2or compounds.xlsx --cas-column "CAS Number"
+aromanexus m2or compounds.xlsx --cas-column "CAS Number"
 
 # Interactive browser compatibility source
-flavor-data mffi compounds.xlsx --cas-column "CAS Number"
+aromanexus mffi compounds.xlsx --cas-column "CAS Number"
 
 # Permission-gated legacy source; the command asks for explicit confirmation
-flavor-data chemicalbook-legacy compounds.xlsx --cas-column "CAS Number"
+aromanexus chemicalbook-legacy compounds.xlsx --cas-column "CAS Number"
 ```
 
 On PowerShell, put a multiline command on one line or replace Bash's `\` continuation with PowerShell's backtick.
@@ -93,19 +93,19 @@ On PowerShell, put a multiline command on one line or replace Bash's `\` continu
 
 | Command | Default input field(s) | Purpose | Default output suffix |
 | --- | --- | --- | --- |
-| `flavor-data sources` | none | List providers, roles, and access modes. `providers` is an alias. | none |
-| `flavor-data nist-ri INPUT` | `CAS Number`, `Calculated RI` | Match the closest value in the original NIST non-polar custom-temperature RI table. | `_nist_result` |
-| `flavor-data resolve-cas INPUT` | `Name` | Resolve an unambiguous compound name to a CAS Registry Number through NIST. | `_with_cas` |
-| `flavor-data pubchem INPUT` | `CAS Number` | Add CID, names, structure identifiers, selected properties, synonyms, CAS identifiers, and sourced odor annotations. | `_pubchem` |
-| `flavor-data pyrfume INPUT` | `PubChem CID`, or `CAS Number` for CID resolution | Match allowlisted pinned archives: `aromadb`, `flavornet`, and/or `superscent`. Defaults to `aromadb,superscent`. | `_pyrfume` |
-| `flavor-data m2or INPUT` | `CAS Number` | Aggregate molecule–receptor pairs, responsive pairs, species, human responsive receptors, and study DOIs. | `_m2or` |
-| `flavor-data mffi INPUT` | `CAS Number` | Use a visible Chrome session for bilingual names, sensory characteristics, and in-water thresholds. Add `--headless` only when interaction is not needed. | `_mffi_result` |
-| `flavor-data chemicalbook-legacy INPUT` | `CAS Number` | Retain the original interactive odor/threshold/type workflow. Disabled until documented permission is confirmed. | `_cb_result` |
+| `aromanexus sources` | none | List providers, roles, and access modes. `providers` is an alias. | none |
+| `aromanexus nist-ri INPUT` | `CAS Number`, `Calculated RI` | Match the closest value in the original NIST non-polar custom-temperature RI table. | `_nist_result` |
+| `aromanexus resolve-cas INPUT` | `Name` | Resolve an unambiguous compound name to a CAS Registry Number through NIST. | `_with_cas` |
+| `aromanexus pubchem INPUT` | `CAS Number` | Add CID, names, structure identifiers, selected properties, synonyms, CAS identifiers, and sourced odor annotations. | `_pubchem` |
+| `aromanexus pyrfume INPUT` | `PubChem CID`, or `CAS Number` for CID resolution | Match allowlisted pinned archives: `aromadb`, `flavornet`, and/or `superscent`. Defaults to `aromadb,superscent`. | `_pyrfume` |
+| `aromanexus m2or INPUT` | `CAS Number` | Aggregate molecule–receptor pairs, responsive pairs, species, human responsive receptors, and study DOIs. | `_m2or` |
+| `aromanexus mffi INPUT` | `CAS Number` | Use a visible Chrome session for bilingual names, sensory characteristics, and in-water thresholds. Add `--headless` only when interaction is not needed. | `_mffi_result` |
+| `aromanexus chemicalbook-legacy INPUT` | `CAS Number` | Retain the original interactive odor/threshold/type workflow. Disabled until documented permission is confirmed. | `_cb_result` |
 
-Run `flavor-data COMMAND --help` for column and provider-specific options. Global options must precede the command:
+Run `aromanexus COMMAND --help` for column and provider-specific options. Global options must precede the command:
 
 ```bash
-flavor-data --cache-dir .cache/flavor-data --timeout 30 pubchem compounds.xlsx
+aromanexus --cache-dir .cache/aromanexus --timeout 30 pubchem compounds.xlsx
 ```
 
 ### Output, checkpoints, and overwrite safety
@@ -116,18 +116,18 @@ By default, provenance columns include provider status, source URL, retrieval ti
 
 ```bash
 # Choose an output explicitly
-flavor-data pubchem compounds.xlsx --output results/compounds_enriched.xlsx
+aromanexus pubchem compounds.xlsx --output results/compounds_enriched.xlsx
 
 # Save a recoverable checkpoint every 10 rows; 0 disables checkpoints
-flavor-data pubchem compounds.xlsx --checkpoint-every 10
+aromanexus pubchem compounds.xlsx --checkpoint-every 10
 
 # Replace an existing destination deliberately
-flavor-data pubchem compounds.xlsx --output compounds_pubchem.xlsx --force
+aromanexus pubchem compounds.xlsx --output compounds_pubchem.xlsx --force
 ```
 
 Checkpoints are named like `compounds_pubchem.partial.xlsx`. They are refreshed during the run, preserved if processing is interrupted, and removed after the final output succeeds. Existing destinations cause the command to stop unless `--force` is supplied. Prefer a new output path instead of overwriting the input.
 
-Successful HTTP responses and downloaded snapshots are cached under `~/.cache/flavor-data-crawler` by default. Set `--cache-dir` before the subcommand to use another location.
+Successful HTTP responses and downloaded snapshots are cached under `~/.cache/aromanexus` by default. Set `AROMANEXUS_CACHE_DIR` or pass `--cache-dir` before the subcommand to use another location; the pre-rename cache environment variables remain accepted for compatibility.
 
 ## Data sources, access, and rights
 
@@ -144,10 +144,10 @@ Access policies and dataset terms can change. Re-check the linked provider docum
 
 ## Project skill for Codex
 
-The repository includes a project-scoped skill at `.agents/skills/curate-flavor-data/`. In Codex, invoke:
+The repository includes a project-scoped skill at `.agents/skills/curate-aroma-data/`. In Codex, invoke:
 
 ```text
-$curate-flavor-data
+$curate-aroma-data
 ```
 
 The skill inspects a workbook, chooses the smallest suitable provider set, previews access and output implications, runs one focused command, and verifies row count, schema, statuses, and provenance. It is an orchestration guide around this package—not a separate scraper or an automatic grant of data rights.
@@ -155,10 +155,12 @@ The skill inspects a workbook, chooses the smallest suitable provider set, previ
 You can run its read-only workbook inspection helper directly:
 
 ```bash
-python .agents/skills/curate-flavor-data/scripts/inspect_workbook.py compounds.xlsx
+python .agents/skills/curate-aroma-data/scripts/inspect_workbook.py compounds.xlsx
 ```
 
 ## Legacy compatibility
+
+The pre-rename `flavor-data` command and `flavor_data_crawler` Python namespace remain compatibility aliases. New integrations should use `aromanexus`; existing automation does not need an immediate rewrite.
 
 The original scripts and Windows launchers are retained for existing workbook layouts:
 

@@ -1,7 +1,7 @@
 """Legacy launcher for the original NIST name-to-CAS workbook workflow."""
 
-from flavor_data_crawler.sources.nist import NistWebBookClient
-from flavor_data_crawler.workflows import run_resolve_cas
+from aromanexus.sources.nist import NistWebBookClient
+from aromanexus.workflows import run_resolve_cas
 
 INPUT_FILE = "name.xlsx"
 COL_NAME = "Name"
