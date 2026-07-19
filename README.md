@@ -9,8 +9,6 @@ A provenance-aware toolkit for turning compound workbooks into traceable chemica
 
 Flavor Data Crawler connects chemical identity, gas-chromatographic retention indices, odor descriptors, thresholds, and optional olfactory-receptor assay evidence. It preserves the original table, normalizes provider results, and records where each enrichment came from. The resulting tables are practical inputs for downstream statistics, cheminformatics, and carefully scoped machine-learning experiments.
 
-This project does **not** claim to be an AI system, infer biological effects, or make clinical predictions. M2OR rows are experimental receptor-assay evidence, not human odor perception.
-
 ```text
 XLSX / CSV / TSV
       │
