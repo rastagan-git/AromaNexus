@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections import Counter
 from collections.abc import Callable, Iterable
@@ -18,6 +19,7 @@ from aromanexus.excel_io import (
     require_columns,
     write_table,
 )
+from aromanexus.identifiers import clean_text, is_valid_cas, normalize_cas
 from aromanexus.models import LookupResult
 from aromanexus.sources.chemicalbook import ManualVerificationRequired
 
@@ -217,25 +219,99 @@ PUBCHEM_COLUMN_MAP = {
 }
 
 
+def _compile_skip_patterns(patterns: Iterable[str] | str | None) -> tuple[re.Pattern[str], ...]:
+    raw_patterns = (patterns,) if isinstance(patterns, str) else patterns or ()
+    compiled: list[re.Pattern[str]] = []
+    for pattern in raw_patterns:
+        try:
+            compiled.append(re.compile(pattern))
+        except re.error as exc:
+            raise ValueError(f"Invalid --skip-pattern regex {pattern!r}: {exc}") from exc
+    return tuple(compiled)
+
+
+def _valid_cas_candidates(value: Any) -> list[str]:
+    if isinstance(value, (list, tuple, set)):
+        raw_candidates = value
+    elif value is None:
+        raw_candidates = ()
+    else:
+        raw_candidates = (value,)
+
+    candidates: list[str] = []
+    for candidate in raw_candidates:
+        normalized = normalize_cas(candidate)
+        if is_valid_cas(normalized) and normalized not in candidates:
+            candidates.append(normalized)
+    return candidates
+
+
+def _apply_pubchem_resolution(
+    frame: pd.DataFrame,
+    index: Any,
+    identifier: Any,
+    result: LookupResult,
+    *,
+    resolved_cas_column: str,
+) -> None:
+    candidates = _valid_cas_candidates(result.values.get("cas_numbers"))
+    resolved_cas = ""
+    if result.status == "skipped":
+        resolution = "skipped"
+    elif result.status != "ok":
+        resolution = "not_evaluated"
+    else:
+        query_cas = normalize_cas(identifier)
+        if is_valid_cas(query_cas):
+            resolution = "query_confirmed"
+            resolved_cas = query_cas
+        elif len(candidates) == 1:
+            resolution = "unique"
+            resolved_cas = candidates[0]
+        elif candidates:
+            resolution = "multiple"
+        else:
+            resolution = "missing"
+
+    _set_cell(frame, index, "PubChem CAS Resolution", resolution)
+    _set_cell(frame, index, "PubChem CAS Candidate Count", len(candidates))
+    _set_cell(frame, index, resolved_cas_column, resolved_cas)
+
+
 def run_pubchem(
     input_path: str | Path,
     client: Any,
     *,
     output_path: str | Path | None = None,
     identifier_column: str = "CAS Number",
+    resolved_cas_column: str = "Resolved CAS",
+    skip_patterns: Iterable[str] | str | None = None,
     include_odor: bool = True,
     include_provenance: bool = True,
     checkpoint_every: int = 25,
     force: bool = False,
     progress: ProgressCallback = console_progress,
 ) -> RunSummary:
+    compiled_skip_patterns = _compile_skip_patterns(skip_patterns)
     frame, destination = _prepare_run(input_path, output_path, suffix="_pubchem", force=force)
     require_columns(frame, identifier_column)
     statuses: Counter[str] = Counter()
     total = len(frame)
     for current, index, row in _indices(frame):
         identifier = row[identifier_column]
-        result = client.lookup(identifier, include_odor=include_odor)
+        identifier_text = clean_text(identifier)
+        matching_pattern = next(
+            (pattern for pattern in compiled_skip_patterns if pattern.search(identifier_text)),
+            None,
+        )
+        if matching_pattern is not None:
+            result = LookupResult.failure(
+                "PubChem",
+                status="skipped",
+                message=f"Identifier matched --skip-pattern {matching_pattern.pattern!r}",
+            )
+        else:
+            result = client.lookup(identifier, include_odor=include_odor)
         _apply_result(
             frame,
             index,
@@ -243,6 +319,13 @@ def run_pubchem(
             include_provenance=include_provenance,
             prefix="PubChem",
             key_map=PUBCHEM_COLUMN_MAP,
+        )
+        _apply_pubchem_resolution(
+            frame,
+            index,
+            identifier,
+            result,
+            resolved_cas_column=resolved_cas_column,
         )
         statuses[result.status] += 1
         progress(current, total, f"PubChem: {identifier} -> {result.status}")

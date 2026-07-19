@@ -99,6 +99,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_table_arguments(pubchem)
     pubchem.add_argument("--identifier-column", default="CAS Number")
+    pubchem.add_argument(
+        "--skip-pattern",
+        action="append",
+        default=[],
+        metavar="REGEX",
+        help="Skip identifiers matching this regex before lookup; repeat for multiple patterns",
+    )
+    pubchem.add_argument(
+        "--resolved-cas-column",
+        default="Resolved CAS",
+        help="Output column populated only for query-confirmed or unique CAS resolution",
+    )
     pubchem.add_argument("--no-odor", action="store_true", help="Skip PUG-View odor annotations")
     pubchem.set_defaults(handler=_handle_pubchem)
 
@@ -199,6 +211,8 @@ def _handle_pubchem(args: argparse.Namespace) -> RunSummary:
         args.input,
         client,
         identifier_column=args.identifier_column,
+        resolved_cas_column=args.resolved_cas_column,
+        skip_patterns=args.skip_pattern,
         include_odor=not args.no_odor,
         **_common_kwargs(args),
     )

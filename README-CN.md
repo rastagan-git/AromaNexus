@@ -66,6 +66,9 @@ CLI 支持 `.xlsx`、`.csv` 和 `.tsv`。列名均可修改；下面使用默认
 # 规范化身份、理化性质、同义词、CAS 标识符与带来源的气味文本
 aromanexus pubchem compounds.xlsx --identifier-column "CAS Number"
 
+# 在名称查询前跳过当前数据集中的结构标签
+aromanexus pubchem compounds.xlsx --identifier-column "Name" --skip-pattern '^C\d+$'
+
 # 在 NIST 中寻找最接近实验计算值的保留指数
 aromanexus nist-ri data.xlsx \
   --cas-column "CAS Number" \
@@ -112,7 +115,7 @@ aromanexus --cache-dir .cache/aromanexus --timeout 30 pubchem compounds.xlsx
 
 所有表格命令默认在输入文件旁生成新文件，保留原有行序和列，再添加数据源字段。例如，PubChem 会将 `compounds.xlsx` 输出为 `compounds_pubchem.xlsx`。
 
-默认来源记录包括数据源状态、来源 URL、获取时间、是否命中缓存、固定版本、许可 URL 与诊断信息。只有在确实需要旧版形状时才使用 `--no-provenance`。
+默认来源记录包括数据源状态、来源 URL、获取时间、是否命中缓存、固定版本、许可 URL 与诊断信息。PubChem 会单独报告 CAS 解析状态；仅当输入 CAS 得到确认，或只剩一个校验有效的候选时，才填入 `Resolved CAS`。多个或缺失候选会保持未解析。只有在确实需要旧版形状时才使用 `--no-provenance`。
 
 ```bash
 # 明确指定输出位置

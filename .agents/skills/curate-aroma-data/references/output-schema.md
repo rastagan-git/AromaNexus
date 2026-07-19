@@ -7,6 +7,25 @@
 - Keep CAS as an external identifier and validate its checksum before exact-match providers.
 - Never silently pick an ambiguous name result.
 
+## PubChem CAS resolution
+
+Keep provider execution and CAS curation in separate columns:
+
+- `PubChem Status`: whether the provider request and record parsing succeeded.
+- `PubChem CAS Numbers`: every checksum-valid candidate retained for review.
+- `PubChem CAS Candidate Count`: the number of distinct valid candidates.
+- `PubChem CAS Resolution`: the conservative resolution decision.
+- `Resolved CAS`: populate only for `query_confirmed` or `unique`.
+
+Interpret `PubChem CAS Resolution` as follows:
+
+- `query_confirmed`: the input was a checksum-valid CAS and PubChem resolved its record.
+- `unique`: a successful name lookup returned exactly one valid CAS candidate.
+- `multiple`: more than one valid candidate remains; keep `Resolved CAS` empty.
+- `missing`: a successful record returned no valid CAS candidate; keep `Resolved CAS` empty.
+- `not_evaluated`: provider failure prevented a defensible CAS decision.
+- `skipped`: an explicit user-supplied rule excluded the row before lookup.
+
 ## Status values
 
 - `ok`: a provider returned a parsed record.
@@ -20,7 +39,7 @@
 - `data_error`: every selected archive failed to load; inspect the per-archive diagnostic message.
 - `partial`: at least one selected source succeeded and at least one failed, or a provider returned usable data with warnings.
 - `blocked`: access policy or missing permission prevented the request.
-- `skipped`: a user deliberately skipped an interactive record.
+- `skipped`: a user deliberately excluded a record through an interactive choice or explicit skip rule.
 
 Do not merge an access, transport, HTTP, snapshot, parse, or partial failure into `not_found`.
 
@@ -38,3 +57,4 @@ After every run, confirm:
 4. Every processed row has a typed status.
 5. Remote strings beginning with `=`, `+`, `-`, or `@` are stored as literal text.
 6. Partial outputs are reported separately if a run is interrupted.
+7. `multiple`, `missing`, `not_evaluated`, and `skipped` PubChem CAS resolutions never contain an automatic `Resolved CAS`.
