@@ -193,3 +193,13 @@ CI runs those checks on Ubuntu and Windows with Python 3.11 and 3.13. Tests use 
 - Never bypass CAPTCHA, authentication, paywalls, or other access controls.
 - Treat `not_found`, `invalid_input`, `http_error`, `network_error`, `parse_error`, `missing_data`, `data_error`, `partial`, `blocked`, and `skipped` as different outcomes.
 - Validate provenance and biological scope before using exports in statistics, cheminformatics, or machine-learning work.
+
+## License
+
+AromaNexus source code and original documentation are licensed under the
+[MIT License](LICENSE).
+
+This license does not grant rights to third-party datasets, website content,
+provider responses, or generated datasets. Data obtained from PubChem, NIST,
+Pyrfume, M2OR, MFFI, ChemicalBook, or other providers remains subject to each
+provider's applicable terms, licenses, and usage restrictions.
