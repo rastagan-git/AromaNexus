@@ -127,6 +127,7 @@ def test_pubchem_skip_pattern_excludes_structural_rows_before_lookup(tmp_path: P
     assert client.calls == [("n-Hexane", True)]
     assert output.loc[0, "PubChem Status"] == "skipped"
     assert pd.isna(output.loc[0, "PubChem Retrieved At"])
+    assert pd.isna(output.loc[0, "PubChem Version"])
     assert output.loc[0, "PubChem CAS Resolution"] == "skipped"
     assert output.loc[0, "PubChem CAS Candidate Count"] == 0
     assert pd.isna(output.loc[0, "Resolved CAS"])

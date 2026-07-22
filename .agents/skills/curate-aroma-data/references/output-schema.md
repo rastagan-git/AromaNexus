@@ -56,9 +56,11 @@ PubChem odor enrichment is enabled by default. With `--no-odor`, skip PUG-View r
 
 ## Provenance
 
-Keep provider status, source URL, retrieval time, cache-hit flag, pinned version or snapshot, license URL, and message columns. For PubChem odor text, also keep contributor source names, URLs, and license URLs.
+Keep provider status, source URL, retrieval time, cache-hit flag, provider-interface or pinned-snapshot label, license URL, and message columns. For PubChem odor text, also keep contributor source names, URLs, and license URLs.
 
 `Retrieved At` is the timestamp of an actual provider or cached representation. Leave it empty for outcomes decided before any representation was obtained, including explicit skips, local input validation failures, and transport failures before a response. A received HTTP or parse-error response retains its retrieval timestamp.
+
+Interpret `PubChem Version` as the interfaces attempted for that row. Use `PUG REST` when odor lookup is disabled or the lookup ends before the PUG-View odor endpoint is attempted. Once that endpoint request begins, use `PUG REST + PUG-View`, even if the request produces no odor annotation or the row becomes `partial`. This label does not prove that PUG-View contributed data; inspect `PubChem Status`, `PubChem Message`, and the odor fields. Keep the version blank for a row skipped before calling the PubChem client.
 
 ## Workbook QA
 

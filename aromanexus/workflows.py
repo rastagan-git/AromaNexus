@@ -213,6 +213,9 @@ def _checkpoint(
     )
     replace_existing = True if still_owned else context.checkpoint_replace_existing
     write_table(frame, partial, force=replace_existing, context=context)
+    # ``--force`` authorizes replacing a pre-existing checkpoint once. After
+    # this run owns the path, an external replacement must never be overwritten.
+    context.checkpoint_replace_existing = False
     context.owned_checkpoint_path = partial
     context.owned_checkpoint_identity = _path_identity(partial)
 

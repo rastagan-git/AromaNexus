@@ -134,11 +134,13 @@ aromanexus --cache-dir .cache/aromanexus --timeout 30 pubchem compounds.xlsx
 
 [Openpyxl 无法保留所有 OOXML 功能](https://openpyxl.readthedocs.io/en/3.1/tutorial.html)。因此，AromaNexus 会先在内存中试写一遍；若检测到绘图形状、批注、ActiveX/OLE 控件、切片器、线程批注、VML、数字签名等已知高风险内容，或任何会被试写丢弃的 OOXML 包部件，就会在调用数据源前停止。Excel 的可选计算链可能会被移除，以便表格软件重新生成。若显式输出 CSV/TSV，结果只是扁平表格，无法保留 Excel 专属内容。
 
-默认来源记录包括数据源状态、来源 URL、获取时间、是否命中缓存、固定版本、许可 URL 与诊断信息。`Retrieved At` 只表示真正取得数据源响应或缓存表示的时间；显式 `skipped`、请求前发现的无效输入、尚未收到响应的网络失败等本地结果会留空。只有在确实需要旧版形状时才使用 `--no-provenance`。
+默认来源记录包括数据源状态、来源 URL、获取时间、是否命中缓存、数据源接口或固定快照标签、许可 URL 与诊断信息。`Retrieved At` 只表示真正取得数据源响应或缓存表示的时间；显式 `skipped`、请求前发现的无效输入、尚未收到响应的网络失败等本地结果会留空。只有在确实需要旧版形状时才使用 `--no-provenance`。
 
 PubChem 会单独报告 CAS 解析状态。仅当查询本身是已确认的 CAS、名称查询只剩一个校验有效的候选，或 `--existing-cas-column` 中的有效 CAS 确实出现在返回候选里时，才填入 `Resolved CAS`。已有 CAS 与候选冲突或本身无效时保持未解析；空单元格会回退到原有的 `unique`、`multiple` 或 `missing` 规则。对于 `partial` 数据源结果，只接受查询或已有 CAS 的正向确认；依赖完整候选集合的判断会保持 `not_evaluated`。原始标识符列和已有 CAS 列都不会被改写；若已有 CAS 列名与当前输出列重叠，CLI 会在请求前拒绝运行。
 
 PubChem 气味扩充默认开启。`--no-odor` 会跳过 PUG-View 请求，并且不新增或更新 `PubChem Odor`、`PubChem Odor Annotations`、`PubChem Odor Sources`、`PubChem Odor Source URLs`、`PubChem Odor License URLs`。如果输入中原本就有这些列，它们会原样保留。
+
+`PubChem Version` 是逐行记录的接口尝试标签。使用 `--no-odor`，或查询在尝试气味端点前已经结束时，该字段为 `PUG REST`；一旦开始请求 PUG-View，则为 `PUG REST + PUG-View`，即使该行随后报告为 `partial`。这个标签不代表 PUG-View 一定返回或贡献了气味注释；还应检查 `PubChem Status`、`PubChem Message` 与气味字段。在调用 PubChem 客户端前就被跳过的行，其版本字段保持为空。
 
 ```bash
 # 明确指定输出位置
@@ -151,7 +153,7 @@ aromanexus pubchem compounds.xlsx --checkpoint-every 10
 aromanexus pubchem compounds.xlsx --output compounds_pubchem.xlsx --force
 ```
 
-检查点形如 `compounds_pubchem.partial.xlsx`：需要使用时会在访问数据源前验证，运行期间定期刷新，中断后保留，最终文件写入成功后删除。AromaNexus 只会删除本次运行自己创建且未被外部替换的检查点；无关的 `.partial` 文件不会被碰。若目标文件或本次必需的检查点路径已存在，命令会停止，除非显式传入 `--force`。即使使用 `--force`，输入路径或同一文件的别名也不能作为输出或检查点路径。
+检查点形如 `compounds_pubchem.partial.xlsx`：需要使用时会在访问数据源前验证，运行期间定期刷新，中断后保留，最终文件写入成功后删除。每次保存的检查点仍是完整、可直接打开的工作簿，而不是进度日志。保真写入路径会尽量减少重复的整本工作簿序列化开销，但更短的间隔仍意味着更多次写盘，是运行速度与恢复文件新鲜度之间的取舍。AromaNexus 只会删除本次运行自己创建且未被外部替换的检查点；无关的 `.partial` 文件不会被碰。若目标文件或本次必需的检查点路径已存在，命令会停止，除非显式传入 `--force`。即使使用 `--force`，输入路径或同一文件的别名也不能作为输出或检查点路径。
 
 成功的 HTTP 响应与下载快照默认缓存到 `~/.cache/aromanexus`。如需更改位置，可设置 `AROMANEXUS_CACHE_DIR`，或在子命令之前传入 `--cache-dir`；更名前的缓存环境变量仍可兼容使用。
 

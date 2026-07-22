@@ -26,6 +26,7 @@ If the console launcher is unavailable, replace `aromanexus ...` with the equiva
    - State the input, selected worksheet for XLSX, new output path, selected provider, expected columns, skip patterns, whether odor annotations are requested, any existing-CAS confirmation column, approximate request count, cache behavior, and material access caveats.
    - Write a sibling output by default. Never reuse the input path as the output path; `--force` is only for a separate existing destination.
    - Keep XLSX input and output when worksheet formulas, formatting, or other workbook content must survive; CSV/TSV output is a flat export.
+   - Choose checkpoint cadence deliberately. Each `.partial.xlsx` remains a complete, openable workbook; shorter intervals provide a more recent recovery file but still perform more writes, even with optimized preservation.
 4. Run one focused command.
    - Identity and odor metadata: `aromanexus pubchem INPUT --identifier-column "CAS Number"`
    - Name lookup with dataset-specific structural rows: `aromanexus pubchem INPUT --identifier-column "Name" --skip-pattern '^C\d+$'`
@@ -39,13 +40,14 @@ If the console launcher is unavailable, replace `aromanexus ...` with the equiva
    - For XLSX only, append `--sheet "SHEET"` to any table command when the target is not the first worksheet. Never pass `--sheet` for CSV or TSV.
 5. Verify the result.
    - Re-run the inspection script on the same worksheet for XLSX, or without `--sheet` for CSV/TSV.
-   - Confirm identical row order and row count, expected new fields, typed status counts, source URL, retrieval time, version, and license/access fields. Treat a blank retrieval time as correct when no provider or cached representation was obtained, including an explicit pre-request skip.
+   - Confirm identical row order and row count, expected new fields, typed status counts, source URL, retrieval time, provider-interface or snapshot label, and license/access fields. Treat a blank retrieval time as correct when no provider or cached representation was obtained, including an explicit pre-request skip.
+   - For PubChem, treat `PubChem Version` as interfaces attempted, not proof that PUG-View contributed odor data. Read [references/output-schema.md](references/output-schema.md) before interpreting `PUG REST` versus `PUG REST + PUG-View`.
    - For XLSX output, also compare worksheet order and names, per-sheet content digests, workbook properties, non-target-sheet content, untargeted source formulas and cached values, styles, dimensions, and reported workbook features.
    - Treat `PubChem Status` as provider execution state, not proof of a uniquely resolved CAS. Check `PubChem CAS Resolution`, candidate count, and `Resolved CAS` separately.
    - Leave `multiple`, `missing`, `input_cas_conflict`, and `input_cas_invalid` CAS resolutions unresolved; retain all candidates and route only the affected rows to a targeted fallback source or manual review.
    - Treat `http_error`, `network_error`, `parse_error`, `missing_data`, `data_error`, `partial`, `blocked`, and `skipped` separately from `not_found`.
    - Consult [references/output-schema.md](references/output-schema.md) when reconciling columns or statuses.
-6. Report the output path, provider versions, status counts, partial failures, and any source terms the user must still review.
+6. Report the output path, provider-interface or snapshot labels, status counts, partial failures, and any source terms the user must still review.
 
 ## Guardrails
 

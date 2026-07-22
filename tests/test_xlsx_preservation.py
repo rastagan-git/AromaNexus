@@ -2,6 +2,7 @@ import os
 import re
 from io import BytesIO
 from pathlib import Path
+from xml.etree import ElementTree
 from zipfile import ZipFile
 
 import openpyxl
@@ -182,6 +183,108 @@ def _inject_formula_cache(
     result, count = pattern.subn(replace, worksheet_xml, count=1)
     assert count == 1
     return result
+
+
+def _cell_elements(worksheet_xml: bytes) -> dict[str, ElementTree.Element]:
+    root = ElementTree.fromstring(worksheet_xml)
+    return {cell.attrib["r"]: cell for cell in root.iter() if cell.tag.rsplit("}", 1)[-1] == "c"}
+
+
+def _element_signature(element: ElementTree.Element):
+    return (
+        element.tag,
+        tuple(sorted(element.attrib.items())),
+        element.text,
+        tuple(_element_signature(child) for child in element),
+    )
+
+
+def test_untouched_cells_keep_source_xml_and_nontrivial_style_semantics(tmp_path: Path):
+    source = tmp_path / "style-source.xlsx"
+    destination = tmp_path / "style-output.xlsx"
+    source.write_bytes((Path(__file__).parents[1] / "示例name.xlsx").read_bytes())
+    source_worksheet = _xlsx_part(source, "xl/worksheets/sheet1.xml")
+    source_cells = _cell_elements(source_worksheet)
+    source_styles = _xlsx_part(source, "xl/styles.xml")
+
+    run_pubchem(
+        source,
+        NoLookupPubChem(),
+        output_path=destination,
+        identifier_column="Name",
+        skip_patterns=[r"^.*$"],
+        include_odor=False,
+        include_provenance=False,
+        checkpoint_every=0,
+        progress=_silent,
+    )
+
+    output_cells = _cell_elements(_xlsx_part(destination, "xl/worksheets/sheet1.xml"))
+    assert _xlsx_part(destination, "xl/styles.xml") == source_styles
+    with ZipFile(destination) as archive:
+        assert "xl/sharedStrings.xml" in archive.namelist()
+    for coordinate, source_cell in source_cells.items():
+        assert _element_signature(output_cells[coordinate]) == _element_signature(source_cell)
+
+    source_workbook = openpyxl.load_workbook(source, data_only=False)
+    output_workbook = openpyxl.load_workbook(destination, data_only=False)
+    try:
+        source_sheet = source_workbook.active
+        output_sheet = output_workbook.active
+        for coordinate in source_cells:
+            assert output_sheet[coordinate].value == source_sheet[coordinate].value
+            assert output_sheet[coordinate]._style == source_sheet[coordinate]._style
+        assert source_cells["A2"].attrib["s"] == "1"
+        assert output_cells["A2"].attrib["s"] == "1"
+        assert output_sheet["A2"].alignment.vertical is None
+    finally:
+        source_workbook.close()
+        output_workbook.close()
+
+
+def test_xml_merge_keeps_touched_style_and_restores_omitted_cells_in_order():
+    namespace = excel_io._SPREADSHEET_NAMESPACE
+    source_xml = f"""<?xml version='1.0' encoding='utf-8'?>
+    <worksheet xmlns='{namespace}'>
+      <dimension ref='A1:C5'/>
+      <sheetData>
+        <row r='2'>
+          <c r='A2' s='4' t='s'><v>1</v></c>
+          <c r='C2' s='3' t='s'><v>2</v></c>
+        </row>
+        <row r='5'><c r='C5' s='1'/></row>
+      </sheetData>
+    </worksheet>
+    """.encode()
+    saved_xml = f"""<?xml version='1.0' encoding='utf-8'?>
+    <worksheet xmlns='{namespace}'>
+      <dimension ref='A1:D2'/>
+      <sheetData>
+        <row r='1'><c r='D1' t='inlineStr'><is><t>New column</t></is></c></row>
+        <row r='2'>
+          <c r='A2' t='inlineStr'><is><t>replacement</t></is></c>
+          <c r='B2' t='inlineStr'><is><t>new value</t></is></c>
+          <c r='C2' t='inlineStr'><is><t>round-tripped</t></is></c>
+        </row>
+      </sheetData>
+    </worksheet>
+    """.encode()
+
+    merged = excel_io._merge_original_cells(source_xml, saved_xml, {"A2"})
+    root = ElementTree.fromstring(merged)
+    rows = [item for item in root.iter() if item.tag.rsplit("}", 1)[-1] == "row"]
+    cells = _cell_elements(merged)
+    dimension = next(item for item in root if item.tag.rsplit("}", 1)[-1] == "dimension")
+
+    assert [row.attrib["r"] for row in rows] == ["1", "2", "5"]
+    assert [cell.attrib["r"] for cell in rows[1]] == ["A2", "B2", "C2"]
+    assert cells["A2"].attrib == {"r": "A2", "t": "inlineStr", "s": "4"}
+    assert "replacement" in "".join(cells["A2"].itertext())
+    assert not any(item.tag.rsplit("}", 1)[-1] == "v" for item in cells["A2"])
+    assert cells["C2"].attrib == {"r": "C2", "s": "3", "t": "s"}
+    assert "".join(cells["C2"].itertext()).strip() == "2"
+    assert cells["C5"].attrib == {"r": "C5", "s": "1"}
+    assert dimension.attrib["ref"] == "A1:D5"
 
 
 def test_all_skipped_xlsx_run_preserves_workbook_structure(tmp_path: Path):
@@ -506,6 +609,7 @@ def test_overwritten_formula_does_not_regain_stale_cache(tmp_path: Path):
         "20",
     )
     _rewrite_xlsx(source, {"xl/worksheets/sheet1.xml": data_xml})
+    source_style = _cell_elements(data_xml)["C2"].attrib.get("s")
 
     run_pubchem(
         source,
@@ -526,6 +630,8 @@ def test_overwritten_formula_does_not_regain_stale_cache(tmp_path: Path):
         assert formulas["Data"]["C2"].value == "110-54-3"
         assert formulas["Data"]["C2"].data_type == "s"
         assert cached["Data"]["C2"].value == "110-54-3"
+        output_cell = _cell_elements(_xlsx_part(destination, "xl/worksheets/sheet1.xml"))["C2"]
+        assert output_cell.attrib.get("s") == source_style
     finally:
         formulas.close()
         cached.close()
@@ -589,6 +695,36 @@ def test_existing_enabled_checkpoint_fails_before_provider(tmp_path: Path):
 
     assert client.calls == 0
     assert partial.read_bytes() == b"user-owned checkpoint sentinel"
+    assert not destination.exists()
+
+
+def test_force_does_not_overwrite_an_externally_replaced_checkpoint(tmp_path: Path):
+    source = tmp_path / "input.xlsx"
+    destination = tmp_path / "output.xlsx"
+    partial = tmp_path / "output.partial.xlsx"
+    replacement = tmp_path / "external-replacement.xlsx"
+    _create_preservation_workbook(source)
+
+    def replace_after_first_checkpoint(current, *_):
+        if current == 2:
+            replacement.write_bytes(b"externally replaced checkpoint")
+            os.replace(replacement, partial)
+
+    with pytest.raises(FileExistsError, match="output.partial.xlsx"):
+        run_pubchem(
+            source,
+            FormulaPubChem(),
+            output_path=destination,
+            sheet_name="Data",
+            identifier_column="Name",
+            include_odor=False,
+            include_provenance=False,
+            checkpoint_every=1,
+            force=True,
+            progress=replace_after_first_checkpoint,
+        )
+
+    assert partial.read_bytes() == b"externally replaced checkpoint"
     assert not destination.exists()
 
 
