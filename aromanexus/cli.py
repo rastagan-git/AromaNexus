@@ -15,7 +15,11 @@ from aromanexus.sources.chemicalbook import (
 )
 from aromanexus.sources.mffi import MffiClient
 from aromanexus.workflows import (
+    CHEMICALBOOK_VALUE_COLUMNS,
+    MFFI_VALUE_COLUMNS,
     RunSummary,
+    preflight_table_run,
+    provenance_column_names,
     run_chemicalbook_legacy,
     run_m2or,
     run_mffi,
@@ -42,6 +46,11 @@ remain source-specific; exported rows retain provenance.
 
 def _add_table_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("input", type=Path, help="Input .xlsx, .csv, or .tsv file")
+    parser.add_argument(
+        "--sheet",
+        metavar="SHEET_NAME",
+        help="XLSX worksheet to enrich (defaults to the first worksheet in workbook order)",
+    )
     parser.add_argument(
         "-o", "--output", type=Path, help="Output path (defaults to a sibling file)"
     )
@@ -158,6 +167,7 @@ def build_parser() -> argparse.ArgumentParser:
 def _common_kwargs(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "output_path": args.output,
+        "sheet_name": args.sheet,
         "include_provenance": not args.no_provenance,
         "checkpoint_every": args.checkpoint_every,
         "force": args.force,
@@ -244,6 +254,19 @@ def _handle_m2or(args: argparse.Namespace) -> RunSummary:
 
 
 def _handle_mffi(args: argparse.Namespace) -> RunSummary:
+    preflight_table_run(
+        args.input,
+        output_path=args.output,
+        suffix="_mffi_result",
+        sheet_name=args.sheet,
+        checkpoint_every=args.checkpoint_every,
+        force=args.force,
+        required_columns=(args.cas_column,),
+        planned_columns=(
+            *MFFI_VALUE_COLUMNS,
+            *(provenance_column_names("MFFI") if not args.no_provenance else ()),
+        ),
+    )
     with MffiClient(timeout=args.timeout, headless=args.headless) as client:
         return run_mffi(args.input, client, cas_column=args.cas_column, **_common_kwargs(args))
 
@@ -260,6 +283,19 @@ def _confirm_chemicalbook_permission(args: argparse.Namespace) -> bool:
 
 
 def _handle_chemicalbook(args: argparse.Namespace) -> RunSummary | int:
+    preflight_table_run(
+        args.input,
+        output_path=args.output,
+        suffix="_cb_result",
+        sheet_name=args.sheet,
+        checkpoint_every=args.checkpoint_every,
+        force=args.force,
+        required_columns=(args.cas_column,),
+        planned_columns=(
+            *CHEMICALBOOK_VALUE_COLUMNS,
+            *(provenance_column_names("ChemicalBook") if not args.no_provenance else ()),
+        ),
+    )
     if not _confirm_chemicalbook_permission(args):
         print("ChemicalBook compatibility run cancelled.", file=sys.stderr)
         return 2

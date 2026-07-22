@@ -1,3 +1,5 @@
+import pandas as pd
+
 from aromanexus.cli import main
 
 
@@ -42,6 +44,8 @@ def test_pubchem_cli_forwards_repeatable_skip_patterns_and_resolved_column(monke
             "^Total$",
             "--resolved-cas-column",
             "Curated CAS",
+            "--sheet",
+            "Data",
         ]
     )
 
@@ -49,3 +53,42 @@ def test_pubchem_cli_forwards_repeatable_skip_patterns_and_resolved_column(monke
     assert captured["input"] == input_path
     assert captured["kwargs"]["skip_patterns"] == [r"^C\d+$", "^Total$"]
     assert captured["kwargs"]["resolved_cas_column"] == "Curated CAS"
+    assert captured["kwargs"]["sheet_name"] == "Data"
+
+
+def test_mffi_preflight_runs_before_browser_construction(monkeypatch, tmp_path):
+    input_path = tmp_path / "input.xlsx"
+    pd.DataFrame({"CAS Number": ["100-52-7"]}).to_excel(input_path, index=False)
+    state = {"constructed": 0}
+
+    class BrowserMustNotStart:
+        def __init__(self, **_kwargs):
+            state["constructed"] += 1
+            raise AssertionError("MFFI browser started before workbook preflight")
+
+    monkeypatch.setattr("aromanexus.cli.MffiClient", BrowserMustNotStart)
+
+    code = main(["mffi", str(input_path), "--sheet", "Missing"])
+
+    assert code == 2
+    assert state["constructed"] == 0
+
+
+def test_chemicalbook_preflight_runs_before_permission_prompt(monkeypatch, tmp_path):
+    input_path = tmp_path / "input.xlsx"
+    pd.DataFrame({"CAS Number": ["100-52-7"]}).to_excel(input_path, index=False)
+    state = {"prompted": 0}
+
+    def permission_must_not_be_requested(_args):
+        state["prompted"] += 1
+        raise AssertionError("Permission prompt ran before workbook preflight")
+
+    monkeypatch.setattr(
+        "aromanexus.cli._confirm_chemicalbook_permission",
+        permission_must_not_be_requested,
+    )
+
+    code = main(["chemicalbook-legacy", str(input_path), "--sheet", "Missing"])
+
+    assert code == 2
+    assert state["prompted"] == 0

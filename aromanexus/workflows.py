@@ -14,9 +14,12 @@ from typing import Any
 import pandas as pd
 
 from aromanexus.excel_io import (
+    TableContext,
     derive_output_path,
-    read_table,
+    read_table_with_context,
+    record_touched_cell,
     require_columns,
+    validate_table_output,
     write_table,
 )
 from aromanexus.identifiers import clean_text, is_valid_cas, normalize_cas
@@ -24,6 +27,33 @@ from aromanexus.models import LookupResult
 from aromanexus.sources.chemicalbook import ManualVerificationRequired
 
 ProgressCallback = Callable[[int, int, str], None]
+PROVENANCE_COLUMN_SUFFIXES = (
+    "Status",
+    "Source URL",
+    "Retrieved At",
+    "Cache Hit",
+    "Version",
+    "License URL",
+    "Message",
+)
+M2OR_VALUE_COLUMNS = (
+    "M2OR Pair Count",
+    "M2OR Responsive Count",
+    "M2OR Species",
+    "M2OR Human Responsive Receptors",
+    "M2OR DOIs",
+)
+MFFI_VALUE_COLUMNS = (
+    "Chinese Name",
+    "English Name",
+    "Sensory Characteristics",
+    "In Water",
+)
+CHEMICALBOOK_VALUE_COLUMNS = (
+    "CB_Odor_Desc",
+    "CB_Odor_Threshold",
+    "CB_Odor_Type",
+)
 
 
 @dataclass(slots=True)
@@ -47,6 +77,12 @@ def _flatten(value: Any) -> Any:
     return value
 
 
+def provenance_column_names(prefix: str) -> tuple[str, ...]:
+    """Return the stable flattened provenance schema for one provider."""
+
+    return tuple(f"{prefix} {suffix}" for suffix in PROVENANCE_COLUMN_SUFFIXES)
+
+
 def _set_cell(frame: pd.DataFrame, index: Any, column: str, value: Any) -> None:
     """Create enrichment columns as object dtype so mixed values remain valid."""
 
@@ -54,6 +90,7 @@ def _set_cell(frame: pd.DataFrame, index: Any, column: str, value: Any) -> None:
         frame[column] = pd.Series([None] * len(frame), index=frame.index, dtype=object)
     elif frame[column].dtype != object:
         frame[column] = frame[column].astype(object)
+    record_touched_cell(frame, index, column)
     frame.at[index, column] = _flatten(value)
 
 
@@ -89,37 +126,112 @@ def _prepare_run(
     output_path: str | Path | None,
     *,
     suffix: str,
+    sheet_name: str | None,
+    checkpoint_every: int,
     force: bool,
-) -> tuple[pd.DataFrame, Path]:
-    frame = read_table(input_path)
+    planned_columns: Iterable[str] = (),
+) -> tuple[pd.DataFrame, Path, TableContext]:
+    frame, context = read_table_with_context(input_path, sheet_name=sheet_name)
     destination = Path(output_path) if output_path else derive_output_path(input_path, suffix)
-    if destination.exists() and not force:
-        raise FileExistsError(f"Output already exists: {destination}. Pass --force to replace it.")
-    return frame, destination
+    minimum_new_columns = (
+        sum(column not in frame.columns for column in dict.fromkeys(planned_columns))
+        if len(frame)
+        else 0
+    )
+    validate_table_output(
+        context,
+        destination,
+        force=force,
+        minimum_new_columns=minimum_new_columns,
+    )
+    if checkpoint_every > 0 and len(frame) >= checkpoint_every:
+        partial = destination.with_name(f"{destination.stem}.partial{destination.suffix}")
+        validate_table_output(
+            context,
+            partial,
+            force=force,
+            minimum_new_columns=minimum_new_columns,
+        )
+        context.planned_checkpoint_path = partial
+        context.checkpoint_replace_existing = force
+    return frame, destination, context
+
+
+def preflight_table_run(
+    input_path: str | Path,
+    *,
+    output_path: str | Path | None,
+    suffix: str,
+    sheet_name: str | None,
+    checkpoint_every: int,
+    force: bool,
+    required_columns: tuple[str, ...] = (),
+    planned_columns: tuple[str, ...] = (),
+) -> Path:
+    """Validate a CLI table run before launching an interactive provider."""
+
+    frame, destination, _ = _prepare_run(
+        input_path,
+        output_path,
+        suffix=suffix,
+        sheet_name=sheet_name,
+        checkpoint_every=checkpoint_every,
+        force=force,
+        planned_columns=planned_columns,
+    )
+    require_columns(frame, *required_columns)
+    return destination
+
+
+def _path_identity(path: Path) -> tuple[int, int] | None:
+    try:
+        metadata = path.stat()
+    except FileNotFoundError:
+        return None
+    return metadata.st_dev, metadata.st_ino
 
 
 def _checkpoint(
     frame: pd.DataFrame,
     destination: Path,
+    context: TableContext,
     current: int,
     checkpoint_every: int,
 ) -> None:
     if checkpoint_every <= 0 or current % checkpoint_every:
         return
-    partial = destination.with_name(f"{destination.stem}.partial{destination.suffix}")
-    write_table(frame, partial, force=True)
+    partial = context.planned_checkpoint_path
+    if partial is None:
+        raise RuntimeError("Checkpoint path was not validated before provider processing.")
+    still_owned = (
+        context.owned_checkpoint_path == partial
+        and context.owned_checkpoint_identity is not None
+        and _path_identity(partial) == context.owned_checkpoint_identity
+    )
+    replace_existing = True if still_owned else context.checkpoint_replace_existing
+    write_table(frame, partial, force=replace_existing, context=context)
+    context.owned_checkpoint_path = partial
+    context.owned_checkpoint_identity = _path_identity(partial)
 
 
 def _finish(
     frame: pd.DataFrame,
     destination: Path,
+    context: TableContext,
     statuses: Counter[str],
     *,
     force: bool,
 ) -> RunSummary:
-    write_table(frame, destination, force=force)
-    partial = destination.with_name(f"{destination.stem}.partial{destination.suffix}")
-    partial.unlink(missing_ok=True)
+    write_table(frame, destination, force=force, context=context)
+    partial = context.owned_checkpoint_path
+    if (
+        partial is not None
+        and context.owned_checkpoint_identity is not None
+        and _path_identity(partial) == context.owned_checkpoint_identity
+    ):
+        partial.unlink(missing_ok=True)
+    context.owned_checkpoint_path = None
+    context.owned_checkpoint_identity = None
     return RunSummary(destination, len(frame), dict(sorted(statuses.items())))
 
 
@@ -133,6 +245,7 @@ def run_nist_ri(
     client: Any,
     *,
     output_path: str | Path | None = None,
+    sheet_name: str | None = None,
     cas_column: str = "CAS Number",
     calculated_ri_column: str = "Calculated RI",
     result_column: str = "NIST RI",
@@ -141,7 +254,22 @@ def run_nist_ri(
     force: bool = False,
     progress: ProgressCallback = console_progress,
 ) -> RunSummary:
-    frame, destination = _prepare_run(input_path, output_path, suffix="_nist_result", force=force)
+    frame, destination, context = _prepare_run(
+        input_path,
+        output_path,
+        suffix="_nist_result",
+        sheet_name=sheet_name,
+        checkpoint_every=checkpoint_every,
+        force=force,
+        planned_columns=(
+            result_column,
+            *(
+                ("NIST RI Candidates", *provenance_column_names("NIST"))
+                if include_provenance
+                else ()
+            ),
+        ),
+    )
     require_columns(frame, cas_column, calculated_ri_column)
     statuses: Counter[str] = Counter()
     total = len(frame)
@@ -155,8 +283,8 @@ def run_nist_ri(
             _apply_provenance(frame, index, result, prefix="NIST")
         statuses[result.status] += 1
         progress(current, total, f"NIST RI: {row[cas_column]} -> {frame.at[index, result_column]}")
-        _checkpoint(frame, destination, current, checkpoint_every)
-    return _finish(frame, destination, statuses, force=force)
+        _checkpoint(frame, destination, context, current, checkpoint_every)
+    return _finish(frame, destination, context, statuses, force=force)
 
 
 def _legacy_name_status(result: LookupResult) -> str:
@@ -175,6 +303,7 @@ def run_resolve_cas(
     client: Any,
     *,
     output_path: str | Path | None = None,
+    sheet_name: str | None = None,
     name_column: str = "Name",
     result_column: str = "Found CAS",
     include_provenance: bool = True,
@@ -182,7 +311,18 @@ def run_resolve_cas(
     force: bool = False,
     progress: ProgressCallback = console_progress,
 ) -> RunSummary:
-    frame, destination = _prepare_run(input_path, output_path, suffix="_with_cas", force=force)
+    frame, destination, context = _prepare_run(
+        input_path,
+        output_path,
+        suffix="_with_cas",
+        sheet_name=sheet_name,
+        checkpoint_every=checkpoint_every,
+        force=force,
+        planned_columns=(
+            result_column,
+            *(provenance_column_names("NIST") if include_provenance else ()),
+        ),
+    )
     require_columns(frame, name_column)
     statuses: Counter[str] = Counter()
     total = len(frame)
@@ -194,8 +334,8 @@ def run_resolve_cas(
         statuses[result.status] += 1
         label = f"Resolve name: {row[name_column]} -> {frame.at[index, result_column]}"
         progress(current, total, label)
-        _checkpoint(frame, destination, current, checkpoint_every)
-    return _finish(frame, destination, statuses, force=force)
+        _checkpoint(frame, destination, context, current, checkpoint_every)
+    return _finish(frame, destination, context, statuses, force=force)
 
 
 PUBCHEM_COLUMN_MAP = {
@@ -283,6 +423,7 @@ def run_pubchem(
     client: Any,
     *,
     output_path: str | Path | None = None,
+    sheet_name: str | None = None,
     identifier_column: str = "CAS Number",
     resolved_cas_column: str = "Resolved CAS",
     skip_patterns: Iterable[str] | str | None = None,
@@ -293,7 +434,21 @@ def run_pubchem(
     progress: ProgressCallback = console_progress,
 ) -> RunSummary:
     compiled_skip_patterns = _compile_skip_patterns(skip_patterns)
-    frame, destination = _prepare_run(input_path, output_path, suffix="_pubchem", force=force)
+    frame, destination, context = _prepare_run(
+        input_path,
+        output_path,
+        suffix="_pubchem",
+        sheet_name=sheet_name,
+        checkpoint_every=checkpoint_every,
+        force=force,
+        planned_columns=(
+            *PUBCHEM_COLUMN_MAP.values(),
+            "PubChem CAS Resolution",
+            "PubChem CAS Candidate Count",
+            resolved_cas_column,
+            *(provenance_column_names("PubChem") if include_provenance else ()),
+        ),
+    )
     require_columns(frame, identifier_column)
     statuses: Counter[str] = Counter()
     total = len(frame)
@@ -329,8 +484,8 @@ def run_pubchem(
         )
         statuses[result.status] += 1
         progress(current, total, f"PubChem: {identifier} -> {result.status}")
-        _checkpoint(frame, destination, current, checkpoint_every)
-    return _finish(frame, destination, statuses, force=force)
+        _checkpoint(frame, destination, context, current, checkpoint_every)
+    return _finish(frame, destination, context, statuses, force=force)
 
 
 def run_pyrfume(
@@ -339,6 +494,7 @@ def run_pyrfume(
     *,
     pubchem_client: Any | None = None,
     output_path: str | Path | None = None,
+    sheet_name: str | None = None,
     cid_column: str = "PubChem CID",
     identifier_column: str = "CAS Number",
     archives: list[str] | None = None,
@@ -347,7 +503,43 @@ def run_pyrfume(
     force: bool = False,
     progress: ProgressCallback = console_progress,
 ) -> RunSummary:
-    frame, destination = _prepare_run(input_path, output_path, suffix="_pyrfume", force=force)
+    frame, destination, context = _prepare_run(
+        input_path,
+        output_path,
+        suffix="_pyrfume",
+        sheet_name=sheet_name,
+        checkpoint_every=checkpoint_every,
+        force=force,
+        planned_columns=(
+            *(
+                f"Pyrfume {archive} {field}"
+                for archive in (
+                    str(item).strip().casefold()
+                    for item in (archives or ("aromadb", "flavornet", "superscent"))
+                )
+                for field in (
+                    "Source Title",
+                    "Source Reference",
+                    "Source Authors",
+                    "Source Notes",
+                    "License Note",
+                    "Manifest URL",
+                    "Present",
+                    "Name",
+                    "IUPAC Name",
+                    "Descriptors",
+                )
+            ),
+            "Pyrfume Archives Matched",
+            *(PUBCHEM_COLUMN_MAP.values() if pubchem_client is not None else ()),
+            *(provenance_column_names("Pyrfume") if include_provenance else ()),
+            *(
+                provenance_column_names("PubChem")
+                if include_provenance and pubchem_client is not None
+                else ()
+            ),
+        ),
+    )
     if cid_column not in frame.columns:
         require_columns(frame, identifier_column)
         if pubchem_client is None:
@@ -383,8 +575,8 @@ def run_pyrfume(
         )
         statuses[result.status] += 1
         progress(current, total, f"Pyrfume CID {cid}: {result.status}")
-        _checkpoint(frame, destination, current, checkpoint_every)
-    return _finish(frame, destination, statuses, force=force)
+        _checkpoint(frame, destination, context, current, checkpoint_every)
+    return _finish(frame, destination, context, statuses, force=force)
 
 
 def run_m2or(
@@ -392,13 +584,25 @@ def run_m2or(
     client: Any,
     *,
     output_path: str | Path | None = None,
+    sheet_name: str | None = None,
     cas_column: str = "CAS Number",
     include_provenance: bool = True,
     checkpoint_every: int = 25,
     force: bool = False,
     progress: ProgressCallback = console_progress,
 ) -> RunSummary:
-    frame, destination = _prepare_run(input_path, output_path, suffix="_m2or", force=force)
+    frame, destination, context = _prepare_run(
+        input_path,
+        output_path,
+        suffix="_m2or",
+        sheet_name=sheet_name,
+        checkpoint_every=checkpoint_every,
+        force=force,
+        planned_columns=(
+            *M2OR_VALUE_COLUMNS,
+            *(provenance_column_names("M2OR") if include_provenance else ()),
+        ),
+    )
     require_columns(frame, cas_column)
     statuses: Counter[str] = Counter()
     total = len(frame)
@@ -413,8 +617,8 @@ def run_m2or(
         )
         statuses[result.status] += 1
         progress(current, total, f"M2OR: {row[cas_column]} -> {result.status}")
-        _checkpoint(frame, destination, current, checkpoint_every)
-    return _finish(frame, destination, statuses, force=force)
+        _checkpoint(frame, destination, context, current, checkpoint_every)
+    return _finish(frame, destination, context, statuses, force=force)
 
 
 def run_mffi(
@@ -422,6 +626,7 @@ def run_mffi(
     client: Any,
     *,
     output_path: str | Path | None = None,
+    sheet_name: str | None = None,
     cas_column: str = "CAS Number",
     include_provenance: bool = True,
     checkpoint_every: int = 10,
@@ -430,7 +635,18 @@ def run_mffi(
     progress: ProgressCallback = console_progress,
     sleep: Callable[[float], None] = time.sleep,
 ) -> RunSummary:
-    frame, destination = _prepare_run(input_path, output_path, suffix="_mffi_result", force=force)
+    frame, destination, context = _prepare_run(
+        input_path,
+        output_path,
+        suffix="_mffi_result",
+        sheet_name=sheet_name,
+        checkpoint_every=checkpoint_every,
+        force=force,
+        planned_columns=(
+            *MFFI_VALUE_COLUMNS,
+            *(provenance_column_names("MFFI") if include_provenance else ()),
+        ),
+    )
     require_columns(frame, cas_column)
     statuses: Counter[str] = Counter()
     total = len(frame)
@@ -452,10 +668,10 @@ def run_mffi(
         )
         statuses[result.status] += 1
         progress(current, total, f"MFFI: {row[cas_column]} -> {result.status}")
-        _checkpoint(frame, destination, current, checkpoint_every)
+        _checkpoint(frame, destination, context, current, checkpoint_every)
         if delay > 0 and current < total:
             sleep(delay)
-    return _finish(frame, destination, statuses, force=force)
+    return _finish(frame, destination, context, statuses, force=force)
 
 
 def run_chemicalbook_legacy(
@@ -463,6 +679,7 @@ def run_chemicalbook_legacy(
     client: Any,
     *,
     output_path: str | Path | None = None,
+    sheet_name: str | None = None,
     cas_column: str = "CAS Number",
     include_provenance: bool = True,
     checkpoint_every: int = 5,
@@ -472,7 +689,18 @@ def run_chemicalbook_legacy(
     prompt: Callable[[str], str] = input,
     sleep: Callable[[float], None] = time.sleep,
 ) -> RunSummary:
-    frame, destination = _prepare_run(input_path, output_path, suffix="_cb_result", force=force)
+    frame, destination, context = _prepare_run(
+        input_path,
+        output_path,
+        suffix="_cb_result",
+        sheet_name=sheet_name,
+        checkpoint_every=checkpoint_every,
+        force=force,
+        planned_columns=(
+            *CHEMICALBOOK_VALUE_COLUMNS,
+            *(provenance_column_names("ChemicalBook") if include_provenance else ()),
+        ),
+    )
     require_columns(frame, cas_column)
     statuses: Counter[str] = Counter()
     total = len(frame)
@@ -508,7 +736,7 @@ def run_chemicalbook_legacy(
         )
         statuses[result.status] += 1
         progress(current, total, f"ChemicalBook: {row[cas_column]} -> {result.status}")
-        _checkpoint(frame, destination, current, checkpoint_every)
+        _checkpoint(frame, destination, context, current, checkpoint_every)
         if delay > 0 and current < total:
             sleep(delay)
-    return _finish(frame, destination, statuses, force=force)
+    return _finish(frame, destination, context, statuses, force=force)

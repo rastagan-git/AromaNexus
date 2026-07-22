@@ -7,7 +7,7 @@
 
 一套重视数据来源追踪的化学—感官数据整理工具：把化合物工作簿扩充为可核查、可继续分析的数据表。
 
-AromaNexus 将化学身份、气相色谱保留指数、气味描述、阈值，以及可选的嗅觉受体实验结果串联起来。它会保留原始表格，规范化不同来源的结果，并记录每项扩充数据来自哪里。输出可作为后续统计分析、化学信息学与边界清晰的机器学习实验输入。
+AromaNexus 将化学身份、气相色谱保留指数、气味描述、阈值，以及可选的嗅觉受体实验结果串联起来。对于 XLSX 到 XLSX 的流程，它只更新指定工作表并保留受支持的工作簿内容，同时规范化不同来源的结果并记录每项扩充数据来自哪里。输出可作为后续统计分析、化学信息学与边界清晰的机器学习实验输入。
 
 ```text
 XLSX / CSV / TSV
@@ -27,6 +27,7 @@ XLSX / CSV / TSV
 - 默认记录状态、来源 URL、获取时间、缓存、版本、许可链接和诊断信息；
 - 使用保守的访问间隔、有限重试与持久缓存；
 - 原子写入、定期生成恢复检查点，默认不覆盖已有文件；
+- 以工作簿为单位写入 XLSX，保留非目标工作表、未被输出字段指向的原公式、格式及常见工作表功能；
 - 在原有 NIST、MFFI、ChemicalBook 流程之外，增加 PubChem、Pyrfume 与 M2OR 扩充。
 
 ## 安装
@@ -68,6 +69,9 @@ aromanexus pubchem compounds.xlsx --identifier-column "CAS Number"
 
 # 在名称查询前跳过当前数据集中的结构标签
 aromanexus pubchem compounds.xlsx --identifier-column "Name" --skip-pattern '^C\d+$'
+
+# 按精确名称选择工作表
+aromanexus pubchem compounds.xlsx --sheet "Data" --identifier-column "Name"
 
 # 在 NIST 中寻找最接近实验计算值的保留指数
 aromanexus nist-ri data.xlsx \
@@ -111,9 +115,15 @@ aromanexus chemicalbook-legacy compounds.xlsx --cas-column "CAS Number"
 aromanexus --cache-dir .cache/aromanexus --timeout 30 pubchem compounds.xlsx
 ```
 
+对于 XLSX 输入，所有表格命令默认处理工作簿顺序中的第一个工作表。使用 `--sheet "Data"` 可按区分大小写的精确名称选择其他工作表。若名称不存在，命令会在调用数据源前报错；CSV/TSV 输入不接受 `--sheet`。
+
 ### 输出、检查点与覆盖保护
 
 所有表格命令默认在输入文件旁生成新文件，保留原有行序和列，再添加数据源字段。例如，PubChem 会将 `compounds.xlsx` 输出为 `compounds_pubchem.xlsx`。
+
+当输入与输出均为 XLSX 时，AromaNexus 从源文件的不可变副本出发，只在指定工作表叠加扩充单元格。非目标工作表的 XML 保持不变；受支持的原值、样式、行高、列宽、冻结窗格、筛选器、表格、数据验证、条件格式、工作簿属性、公式及公式缓存结果也会保留。已有公式只在某个输出字段明确指向该单元格时才会按请求替换，其他原公式不会被改写。目标表格矩形之外的合并单元格会保留；与该矩形相交的合并区域会在访问数据源前被拒绝。新获取且形似公式的文本会被转义；`.partial.xlsx` 检查点遵循相同规则。
+
+[Openpyxl 无法保留所有 OOXML 功能](https://openpyxl.readthedocs.io/en/3.1/tutorial.html)。因此，AromaNexus 会先在内存中试写一遍；若检测到绘图形状、批注、ActiveX/OLE 控件、切片器、线程批注、VML、数字签名等已知高风险内容，或任何会被试写丢弃的 OOXML 包部件，就会在调用数据源前停止。Excel 的可选计算链可能会被移除，以便表格软件重新生成。若显式输出 CSV/TSV，结果只是扁平表格，无法保留 Excel 专属内容。
 
 默认来源记录包括数据源状态、来源 URL、获取时间、是否命中缓存、固定版本、许可 URL 与诊断信息。PubChem 会单独报告 CAS 解析状态；仅当输入 CAS 得到确认，或只剩一个校验有效的候选时，才填入 `Resolved CAS`。多个或缺失候选会保持未解析。只有在确实需要旧版形状时才使用 `--no-provenance`。
 
@@ -128,7 +138,7 @@ aromanexus pubchem compounds.xlsx --checkpoint-every 10
 aromanexus pubchem compounds.xlsx --output compounds_pubchem.xlsx --force
 ```
 
-检查点形如 `compounds_pubchem.partial.xlsx`：运行期间定期刷新，中断后保留，最终文件写入成功后删除。若目标文件已存在，命令会停止，除非显式传入 `--force`。建议输出到新文件，不要直接覆盖输入。
+检查点形如 `compounds_pubchem.partial.xlsx`：需要使用时会在访问数据源前验证，运行期间定期刷新，中断后保留，最终文件写入成功后删除。AromaNexus 只会删除本次运行自己创建且未被外部替换的检查点；无关的 `.partial` 文件不会被碰。若目标文件或本次必需的检查点路径已存在，命令会停止，除非显式传入 `--force`。即使使用 `--force`，输入路径或同一文件的别名也不能作为输出或检查点路径。
 
 成功的 HTTP 响应与下载快照默认缓存到 `~/.cache/aromanexus`。如需更改位置，可设置 `AROMANEXUS_CACHE_DIR`，或在子命令之前传入 `--cache-dir`；更名前的缓存环境变量仍可兼容使用。
 
@@ -158,14 +168,14 @@ $curate-aroma-data
 也可以直接运行其中只读的工作簿检查工具：
 
 ```bash
-python .agents/skills/curate-aroma-data/scripts/inspect_workbook.py compounds.xlsx
+python .agents/skills/curate-aroma-data/scripts/inspect_workbook.py compounds.xlsx --sheet "Data"
 ```
 
 ## 旧版兼容入口
 
 更名前的 `flavor-data` 命令与 `flavor_data_crawler` Python 命名空间继续作为兼容别名。新集成建议使用 `aromanexus`，现有自动化无需立刻重写。
 
-原有脚本与 Windows 启动器仍然保留，继续支持固定的工作簿布局：
+原有脚本与 Windows 启动器仍然保留，继续支持固定的工作簿布局。它们默认处理第一个工作表；需要选择其他工作表时请使用统一 CLI。
 
 | 启动器 | 脚本 | 预期工作簿 | 必需列 | 输出 |
 | --- | --- | --- | --- | --- |
