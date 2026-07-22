@@ -181,6 +181,7 @@ def test_lookup_combines_properties_identifiers_synonyms_and_odor() -> None:
     assert result.values["odor_sources"] == ["Hazardous Substances Data Bank (HSDB)"]
     assert result.cache_hit is True
     assert result.source_url.endswith("/properties")
+    assert result.version == "PUG REST + PUG-View"
     assert len(fake_http.calls) == 4
     assert fake_http.calls[1]["params"] == {"identifier_type": "CAS"}
     assert fake_http.calls[3]["params"] == {"heading": "Odor"}
@@ -195,6 +196,7 @@ def test_lookup_accepts_cas_and_can_skip_pug_view() -> None:
     assert result.status == "ok"
     assert result.values["cas_numbers"] == ["100-52-7"]
     assert result.values["odor"] == []
+    assert result.version == "PUG REST"
     assert len(fake_http.calls) == 3
     assert "/compound/name/100527/property/" in fake_http.calls[0]["url"]
 
@@ -213,6 +215,23 @@ def test_missing_odor_is_not_a_primary_lookup_failure() -> None:
     assert result.status == "ok"
     assert result.values["odor"] == []
     assert result.message == ""
+    assert result.version == "PUG REST + PUG-View"
+
+
+def test_attempted_pug_view_failure_is_reflected_in_version_and_status() -> None:
+    fake_http = FakeHttp(
+        response(PROPERTIES),
+        response(IDENTIFIERS),
+        response(SYNONYMS),
+        response({"Fault": {"Message": "Unavailable"}}, status=500),
+    )
+    client = PubChemClient(http_client=fake_http)
+
+    result = client.lookup("benzaldehyde")
+
+    assert result.status == "partial"
+    assert "Odor annotations returned HTTP 500" in result.message
+    assert result.version == "PUG REST + PUG-View"
 
 
 def test_primary_not_found_and_malformed_payloads_are_explicit() -> None:
@@ -227,8 +246,10 @@ def test_primary_not_found_and_malformed_payloads_are_explicit() -> None:
 
     assert missing.status == "not_found"
     assert missing.retrieved_at == "2026-07-19T00:00:00+00:00"
+    assert missing.version == "PUG REST"
     assert malformed.status == "parse_error"
     assert malformed.retrieved_at == "2026-07-19T00:00:00+00:00"
+    assert malformed.version == "PUG REST"
     assert len(fake_http.calls) == 2
 
 
@@ -241,8 +262,10 @@ def test_failure_before_any_pubchem_response_has_no_retrieval_timestamp() -> Non
 
     assert invalid.status == "invalid_input"
     assert invalid.retrieved_at == ""
+    assert invalid.version == "PUG REST"
     assert network.status == "network_error"
     assert network.retrieved_at == ""
+    assert network.version == "PUG REST"
 
 
 def test_pubchem_default_rate_is_below_five_requests_per_second(tmp_path: Any) -> None:

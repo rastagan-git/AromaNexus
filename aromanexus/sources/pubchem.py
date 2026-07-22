@@ -21,7 +21,9 @@ from aromanexus.models import LookupResult
 PUBCHEM_PUG_BASE = "https://pubchem.ncbi.nlm.nih.gov/rest/pug"
 PUBCHEM_VIEW_BASE = "https://pubchem.ncbi.nlm.nih.gov/rest/pug_view"
 PUBCHEM_LICENSE_URL = "https://www.ncbi.nlm.nih.gov/home/about/policies/"
-PUBCHEM_VERSION = "PUG REST + PUG-View"
+PUBCHEM_PUG_REST_VERSION = "PUG REST"
+PUBCHEM_PUG_VIEW_VERSION = "PUG REST + PUG-View"
+PUBCHEM_VERSION = PUBCHEM_PUG_VIEW_VERSION
 PROPERTY_TAGS = (
     "Title",
     "IUPACName",
@@ -357,8 +359,10 @@ class PubChemClient:
             if is_valid_cas(synonym_cas) and synonym_cas not in values["cas_numbers"]:
                 values["cas_numbers"].append(synonym_cas)
 
+        pug_view_attempted = False
         if include_odor:
             odor_url = f"{PUBCHEM_VIEW_BASE}/data/compound/{cid}/JSON"
+            pug_view_attempted = True
             try:
                 odor_response = self.http.get(
                     odor_url,
@@ -383,7 +387,7 @@ class PubChemClient:
             status="partial" if warnings else "ok",
             message="; ".join(warnings),
             cache_hit=all(response.metadata.cache_hit for response in responses),
-            version=PUBCHEM_VERSION,
+            version=(PUBCHEM_PUG_VIEW_VERSION if pug_view_attempted else PUBCHEM_PUG_REST_VERSION),
             license_url=PUBCHEM_LICENSE_URL,
         )
 
@@ -401,7 +405,7 @@ class PubChemClient:
             source_url=response.url,
             retrieved_at=response.metadata.retrieved_at,
             cache_hit=response.metadata.cache_hit,
-            version=PUBCHEM_VERSION,
+            version=PUBCHEM_PUG_REST_VERSION,
             license_url=PUBCHEM_LICENSE_URL,
         )
 
@@ -412,7 +416,7 @@ class PubChemClient:
             message=message,
             source_url=source_url,
             retrieved_at="",
-            version=PUBCHEM_VERSION,
+            version=PUBCHEM_PUG_REST_VERSION,
             license_url=PUBCHEM_LICENSE_URL,
         )
 

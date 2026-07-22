@@ -7,7 +7,7 @@ import posixpath
 import re
 import tempfile
 import warnings
-from copy import copy
+from copy import copy, deepcopy
 from dataclasses import dataclass, field
 from io import BytesIO
 from numbers import Integral
@@ -51,6 +51,7 @@ _CELL_BLOCK = re.compile(
 _FORMULA_ELEMENT = re.compile(rb"<f(?:\s[^>]*)?(?:/>|>.*?</f>)", re.DOTALL)
 _VALUE_ELEMENT = re.compile(rb"<v(?:\s[^>]*)?(?:/>|>.*?</v>)", re.DOTALL)
 _CELL_TYPE_ATTRIBUTE = re.compile(rb'\s+t="(?P<cell_type>[^"]*)"')
+_CELL_COORDINATE = re.compile(r"(?P<column>[A-Z]{1,3})(?P<row>[1-9][0-9]*)\Z")
 
 
 @dataclass(slots=True)
@@ -64,6 +65,7 @@ class TableContext:
     template_bytes: bytes | None = None
     touched_cells: set[tuple[int, Any]] = field(default_factory=set)
     preservation_validated: bool = False
+    layout_validated_new_columns: int = -1
     planned_checkpoint_path: Path | None = None
     owned_checkpoint_path: Path | None = None
     owned_checkpoint_identity: tuple[int, int] | None = None
@@ -335,11 +337,12 @@ def validate_table_output(
         and context.source_path.suffix.lower() == ".xlsx"
         and context.template_bytes is not None
     )
-    if preserve_xlsx:
+    if preserve_xlsx and minimum_new_columns > context.layout_validated_new_columns:
         _validate_target_sheet_layout(
             context,
             minimum_new_columns=minimum_new_columns,
         )
+        context.layout_validated_new_columns = minimum_new_columns
     if preserve_xlsx and not context.preservation_validated:
         unsupported = _unsupported_parts(context.template_bytes)
         roundtrip_issues = _openpyxl_roundtrip_issues(context.template_bytes)
@@ -433,6 +436,208 @@ def _restore_cached_values(
     return _CELL_BLOCK.sub(restore, worksheet_xml)
 
 
+def _worksheet_tag(local_name: str) -> str:
+    return f"{{{_SPREADSHEET_NAMESPACE}}}{local_name}"
+
+
+def _cell_position(coordinate: str) -> tuple[int, int]:
+    match = _CELL_COORDINATE.fullmatch(coordinate)
+    if match is None:
+        raise ValueError(f"Invalid XLSX cell coordinate: {coordinate!r}")
+    column = 0
+    for character in match.group("column"):
+        column = column * 26 + ord(character) - ord("A") + 1
+    return int(match.group("row")), column
+
+
+def _row_cells(row: ElementTree.Element) -> dict[str, ElementTree.Element]:
+    cells: dict[str, ElementTree.Element] = {}
+    for cell in row.findall(_worksheet_tag("c")):
+        coordinate = cell.attrib.get("r")
+        if coordinate is None:
+            raise ValueError("XLSX worksheet contains a cell without a coordinate.")
+        cell_row, _ = _cell_position(coordinate)
+        row_number = row.attrib.get("r")
+        if row_number is None or cell_row != int(row_number):
+            raise ValueError(f"XLSX cell {coordinate!r} is stored in the wrong row.")
+        if coordinate in cells:
+            raise ValueError(f"XLSX worksheet contains duplicate cell {coordinate!r}.")
+        cells[coordinate] = cell
+    return cells
+
+
+def _insert_cell(row: ElementTree.Element, cell: ElementTree.Element) -> None:
+    _, target_column = _cell_position(cell.attrib["r"])
+    for position, child in enumerate(row):
+        if child.tag != _worksheet_tag("c"):
+            row.insert(position, cell)
+            return
+        _, child_column = _cell_position(child.attrib["r"])
+        if child_column > target_column:
+            row.insert(position, cell)
+            return
+    row.append(cell)
+
+
+def _copy_style_reference(
+    source_cell: ElementTree.Element,
+    saved_cell: ElementTree.Element,
+) -> None:
+    style_id = source_cell.attrib.get("s")
+    if style_id is None:
+        saved_cell.attrib.pop("s", None)
+    else:
+        saved_cell.attrib["s"] = style_id
+
+
+def _blank_cell_with_source_style(source_cell: ElementTree.Element) -> ElementTree.Element | None:
+    style_id = source_cell.attrib.get("s")
+    if style_id is None:
+        return None
+    return ElementTree.Element(
+        _worksheet_tag("c"),
+        {"r": source_cell.attrib["r"], "s": style_id},
+    )
+
+
+def _shared_formula_cells_affected_by_touches(
+    source_data: ElementTree.Element,
+    touched_coordinates: set[str],
+) -> set[str]:
+    groups: dict[str, set[str]] = {}
+    for row in source_data.findall(_worksheet_tag("row")):
+        for coordinate, cell in _row_cells(row).items():
+            formula = cell.find(_worksheet_tag("f"))
+            if formula is None or formula.attrib.get("t") != "shared":
+                continue
+            shared_index = formula.attrib.get("si")
+            if shared_index is None:
+                raise ValueError(f"Shared formula cell {coordinate!r} has no shared index.")
+            groups.setdefault(shared_index, set()).add(coordinate)
+    return {
+        coordinate
+        for coordinates in groups.values()
+        if coordinates & touched_coordinates
+        for coordinate in coordinates
+    }
+
+
+def _expand_worksheet_dimension(root: ElementTree.Element) -> None:
+    dimension = root.find(_worksheet_tag("dimension"))
+    sheet_data = root.find(_worksheet_tag("sheetData"))
+    if dimension is None or sheet_data is None:
+        return
+    coordinates = [
+        _cell_position(cell.attrib["r"])
+        for row in sheet_data.findall(_worksheet_tag("row"))
+        for cell in row.findall(_worksheet_tag("c"))
+    ]
+    if not coordinates:
+        return
+    rows, columns = zip(*coordinates, strict=True)
+    reference = dimension.attrib.get("ref", "A1")
+    endpoints = reference.split(":", 1)
+    dimension_coordinates = [_cell_position(item.replace("$", "")) for item in endpoints]
+    dimension_rows, dimension_columns = zip(*dimension_coordinates, strict=True)
+    minimum_row = min(*rows, *dimension_rows)
+    maximum_row = max(*rows, *dimension_rows)
+    minimum_column = min(*columns, *dimension_columns)
+    maximum_column = max(*columns, *dimension_columns)
+    first = f"{get_column_letter(minimum_column)}{minimum_row}"
+    last = f"{get_column_letter(maximum_column)}{maximum_row}"
+    dimension.attrib["ref"] = first if first == last else f"{first}:{last}"
+
+
+def _merge_original_cells(
+    source_xml: bytes,
+    saved_xml: bytes,
+    touched_coordinates: set[str],
+) -> bytes:
+    """Restore source cells while retaining intentional values from the saved sheet."""
+
+    source_root = ElementTree.fromstring(source_xml)
+    saved_root = ElementTree.fromstring(saved_xml)
+    source_data = source_root.find(_worksheet_tag("sheetData"))
+    saved_data = saved_root.find(_worksheet_tag("sheetData"))
+    if source_data is None or saved_data is None:
+        raise ValueError("XLSX worksheet is missing sheetData.")
+
+    saved_rows: dict[int, ElementTree.Element] = {}
+    for row in saved_data.findall(_worksheet_tag("row")):
+        row_number = row.attrib.get("r")
+        if row_number is None:
+            raise ValueError("XLSX worksheet contains a row without a number.")
+        numeric_row = int(row_number)
+        if numeric_row in saved_rows:
+            raise ValueError(f"XLSX worksheet contains duplicate row {numeric_row}.")
+        saved_rows[numeric_row] = row
+
+    touched = set(touched_coordinates)
+    keep_saved_formula_cells = _shared_formula_cells_affected_by_touches(source_data, touched)
+    for source_row in source_data.findall(_worksheet_tag("row")):
+        row_number = source_row.attrib.get("r")
+        if row_number is None:
+            raise ValueError("XLSX worksheet contains a row without a number.")
+        numeric_row = int(row_number)
+        source_cells = _row_cells(source_row)
+        saved_row = saved_rows.get(numeric_row)
+
+        if saved_row is None:
+            missing_saved_formulas = (set(source_cells) & keep_saved_formula_cells) - touched
+            if missing_saved_formulas:
+                coordinate = min(missing_saved_formulas, key=_cell_position)
+                raise ValueError(
+                    f"Shared formula cell {coordinate!r} was lost during XLSX preservation."
+                )
+            restored_row = deepcopy(source_row)
+            restored_cells = _row_cells(restored_row)
+            for coordinate, restored_cell in list(restored_cells.items()):
+                if coordinate not in touched:
+                    continue
+                position = list(restored_row).index(restored_cell)
+                restored_row.remove(restored_cell)
+                blank = _blank_cell_with_source_style(source_cells[coordinate])
+                if blank is not None:
+                    restored_row.insert(position, blank)
+            for position, candidate in enumerate(saved_data.findall(_worksheet_tag("row"))):
+                if int(candidate.attrib["r"]) > numeric_row:
+                    saved_data.insert(position, restored_row)
+                    break
+            else:
+                saved_data.append(restored_row)
+            saved_rows[numeric_row] = restored_row
+            continue
+
+        saved_cells = _row_cells(saved_row)
+        for coordinate, source_cell in source_cells.items():
+            saved_cell = saved_cells.get(coordinate)
+            if coordinate in touched or coordinate in keep_saved_formula_cells:
+                if saved_cell is not None:
+                    _copy_style_reference(source_cell, saved_cell)
+                elif coordinate in keep_saved_formula_cells and coordinate not in touched:
+                    raise ValueError(
+                        f"Shared formula cell {coordinate!r} was lost during XLSX preservation."
+                    )
+                else:
+                    blank = _blank_cell_with_source_style(source_cell)
+                    if blank is not None:
+                        _insert_cell(saved_row, blank)
+                continue
+
+            restored_cell = deepcopy(source_cell)
+            if saved_cell is None:
+                _insert_cell(saved_row, restored_cell)
+                continue
+            position = list(saved_row).index(saved_cell)
+            saved_row.remove(saved_cell)
+            saved_row.insert(position, restored_cell)
+
+    _expand_worksheet_dimension(saved_root)
+    ElementTree.register_namespace("", _SPREADSHEET_NAMESPACE)
+    ElementTree.register_namespace("r", _OFFICE_RELATIONSHIP_NAMESPACE)
+    return ElementTree.tostring(saved_root, encoding="utf-8", xml_declaration=True)
+
+
 def _sheet_relationship_part(worksheet_part: str) -> str:
     directory, filename = posixpath.split(worksheet_part)
     return posixpath.join(directory, "_rels", f"{filename}.rels")
@@ -477,10 +682,16 @@ def _build_preserved_package(
         saved_part = saved_parts[selected_sheet]
         if posixpath.dirname(source_part) != posixpath.dirname(saved_part):
             raise ValueError("XLSX worksheet relationship paths changed during preservation.")
-        cached = _formula_cached_values(source_archive.read(source_part))
-        replacements[source_part] = _restore_cached_values(
+        source_worksheet = source_archive.read(source_part)
+        cached = _formula_cached_values(source_worksheet)
+        saved_worksheet = _restore_cached_values(
             saved_archive.read(saved_part),
             cached,
+            touched_coordinates,
+        )
+        replacements[source_part] = _merge_original_cells(
+            source_worksheet,
+            saved_worksheet,
             touched_coordinates,
         )
         source_relationships = _sheet_relationship_part(source_part)
@@ -576,6 +787,10 @@ def _write_preserved_xlsx(
             column_dimension.width = _column_width(frame, column)
 
         frame_positions = {column: position for position, column in enumerate(frame.columns)}
+        # ``DataFrame.iat`` extracts a Series for every scalar access. Pandas then
+        # deep-copies ``frame.attrs``, including our growing XLSX context. A single
+        # object view avoids that quadratic checkpoint tax without copying values.
+        frame_values = frame.to_numpy(dtype=object, copy=False)
         touched_coordinates: set[str] = set()
         for row_position, column in sorted(
             context.touched_cells,
@@ -591,7 +806,7 @@ def _write_preserved_xlsx(
                     f"Cannot write {column!r} at row {row_position + 2}: "
                     "cell is inside a merged range."
                 )
-            cell.value = _excel_value(frame.iat[row_position, frame_column])
+            cell.value = _excel_value(frame_values[row_position, frame_column])
             touched_coordinates.add(f"{get_column_letter(output_column)}{row_position + 2}")
 
         workbook.save(temporary)
