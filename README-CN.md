@@ -57,6 +57,9 @@ python -m pip install -e .
 ```bash
 aromanexus --version
 aromanexus sources
+
+# 控制台启动器不可用时，可使用等价的模块入口
+python -m aromanexus --version
 ```
 
 ## 快速开始
@@ -69,6 +72,12 @@ aromanexus pubchem compounds.xlsx --identifier-column "CAS Number"
 
 # 在名称查询前跳过当前数据集中的结构标签
 aromanexus pubchem compounds.xlsx --identifier-column "Name" --skip-pattern '^C\d+$'
+
+# 只把已有 CAS 列作为名称查询候选的保守确认信号
+aromanexus pubchem compounds.xlsx --identifier-column "Name" --existing-cas-column "Existing CAS"
+
+# 跳过 PUG-View 请求，并省略仅用于气味信息的输出列组
+aromanexus pubchem compounds.xlsx --no-odor
 
 # 按精确名称选择工作表
 aromanexus pubchem compounds.xlsx --sheet "Data" --identifier-column "Name"
@@ -125,7 +134,11 @@ aromanexus --cache-dir .cache/aromanexus --timeout 30 pubchem compounds.xlsx
 
 [Openpyxl 无法保留所有 OOXML 功能](https://openpyxl.readthedocs.io/en/3.1/tutorial.html)。因此，AromaNexus 会先在内存中试写一遍；若检测到绘图形状、批注、ActiveX/OLE 控件、切片器、线程批注、VML、数字签名等已知高风险内容，或任何会被试写丢弃的 OOXML 包部件，就会在调用数据源前停止。Excel 的可选计算链可能会被移除，以便表格软件重新生成。若显式输出 CSV/TSV，结果只是扁平表格，无法保留 Excel 专属内容。
 
-默认来源记录包括数据源状态、来源 URL、获取时间、是否命中缓存、固定版本、许可 URL 与诊断信息。PubChem 会单独报告 CAS 解析状态；仅当输入 CAS 得到确认，或只剩一个校验有效的候选时，才填入 `Resolved CAS`。多个或缺失候选会保持未解析。只有在确实需要旧版形状时才使用 `--no-provenance`。
+默认来源记录包括数据源状态、来源 URL、获取时间、是否命中缓存、固定版本、许可 URL 与诊断信息。`Retrieved At` 只表示真正取得数据源响应或缓存表示的时间；显式 `skipped`、请求前发现的无效输入、尚未收到响应的网络失败等本地结果会留空。只有在确实需要旧版形状时才使用 `--no-provenance`。
+
+PubChem 会单独报告 CAS 解析状态。仅当查询本身是已确认的 CAS、名称查询只剩一个校验有效的候选，或 `--existing-cas-column` 中的有效 CAS 确实出现在返回候选里时，才填入 `Resolved CAS`。已有 CAS 与候选冲突或本身无效时保持未解析；空单元格会回退到原有的 `unique`、`multiple` 或 `missing` 规则。对于 `partial` 数据源结果，只接受查询或已有 CAS 的正向确认；依赖完整候选集合的判断会保持 `not_evaluated`。原始标识符列和已有 CAS 列都不会被改写；若已有 CAS 列名与当前输出列重叠，CLI 会在请求前拒绝运行。
+
+PubChem 气味扩充默认开启。`--no-odor` 会跳过 PUG-View 请求，并且不新增或更新 `PubChem Odor`、`PubChem Odor Annotations`、`PubChem Odor Sources`、`PubChem Odor Source URLs`、`PubChem Odor License URLs`。如果输入中原本就有这些列，它们会原样保留。
 
 ```bash
 # 明确指定输出位置

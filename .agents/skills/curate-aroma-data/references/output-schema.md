@@ -15,11 +15,14 @@ Keep provider execution and CAS curation in separate columns:
 - `PubChem CAS Numbers`: every checksum-valid candidate retained for review.
 - `PubChem CAS Candidate Count`: the number of distinct valid candidates.
 - `PubChem CAS Resolution`: the conservative resolution decision.
-- `Resolved CAS`: populate only for `query_confirmed` or `unique`.
+- `Resolved CAS`: populate only for `query_confirmed`, `input_cas_confirmed`, or `unique`.
 
 Interpret `PubChem CAS Resolution` as follows:
 
 - `query_confirmed`: the input was a checksum-valid CAS and PubChem resolved its record.
+- `input_cas_confirmed`: for a non-CAS query, the optional existing CAS was valid and appeared among the returned candidates.
+- `input_cas_conflict`: the optional existing CAS was valid but absent from the returned candidates; keep `Resolved CAS` empty.
+- `input_cas_invalid`: the optional existing CAS was nonblank but invalid; keep `Resolved CAS` empty.
 - `unique`: a successful name lookup returned exactly one valid CAS candidate.
 - `multiple`: more than one valid candidate remains; keep `Resolved CAS` empty.
 - `missing`: a successful record returned no valid CAS candidate; keep `Resolved CAS` empty.
@@ -43,9 +46,19 @@ Interpret `PubChem CAS Resolution` as follows:
 
 Do not merge an access, transport, HTTP, snapshot, parse, or partial failure into `not_found`.
 
+When the optional existing-CAS cell is blank or missing, use the normal `unique`, `multiple`, or `missing` rule. A valid CAS query itself always takes precedence as `query_confirmed`. Never modify the existing-CAS column or remove candidates from `PubChem CAS Numbers`.
+
+For a `partial` provider result, accept only positive `query_confirmed` or `input_cas_confirmed` evidence. Do not infer `unique`, `multiple`, `missing`, `input_cas_conflict`, or `input_cas_invalid` from a potentially incomplete secondary response; use `not_evaluated` instead.
+
+## Optional odor columns
+
+PubChem odor enrichment is enabled by default. With `--no-odor`, skip PUG-View requests and do not add or update `PubChem Odor`, `PubChem Odor Annotations`, `PubChem Odor Sources`, `PubChem Odor Source URLs`, or `PubChem Odor License URLs`. Preserve any such columns already present in the input.
+
 ## Provenance
 
 Keep provider status, source URL, retrieval time, cache-hit flag, pinned version or snapshot, license URL, and message columns. For PubChem odor text, also keep contributor source names, URLs, and license URLs.
+
+`Retrieved At` is the timestamp of an actual provider or cached representation. Leave it empty for outcomes decided before any representation was obtained, including explicit skips, local input validation failures, and transport failures before a response. A received HTTP or parse-error response retains its retrieval timestamp.
 
 ## Workbook QA
 
@@ -57,7 +70,7 @@ After every run, confirm:
 4. Every processed row has a typed status.
 5. Remote strings beginning with `=`, `+`, `-`, or `@` are stored as literal text.
 6. Partial outputs are reported separately if a run is interrupted.
-7. `multiple`, `missing`, `not_evaluated`, and `skipped` PubChem CAS resolutions never contain an automatic `Resolved CAS`.
+7. `multiple`, `missing`, `input_cas_conflict`, `input_cas_invalid`, `not_evaluated`, and `skipped` PubChem CAS resolutions never contain an automatic `Resolved CAS`.
 8. XLSX worksheet order and names match the input, and supported non-target worksheet content and features are unchanged.
 9. Source formulas and cached results outside explicitly targeted output cells, plus styles, dimensions, freeze panes, filters, tables, data validation, conditional formatting, and workbook properties, remain present where applicable.
 10. Merged cells outside the selected tabular rectangle remain present; a merge intersecting that rectangle is rejected before provider access.

@@ -118,9 +118,24 @@ def build_parser() -> argparse.ArgumentParser:
     pubchem.add_argument(
         "--resolved-cas-column",
         default="Resolved CAS",
-        help="Output column populated only for query-confirmed or unique CAS resolution",
+        help=(
+            "Output column populated only when the query, an existing CAS, or one unique "
+            "candidate is confirmed"
+        ),
     )
-    pubchem.add_argument("--no-odor", action="store_true", help="Skip PUG-View odor annotations")
+    pubchem.add_argument(
+        "--existing-cas-column",
+        metavar="COLUMN",
+        help=(
+            "Optional existing CAS column used to confirm name-query candidates; "
+            "invalid or conflicting values remain unresolved"
+        ),
+    )
+    pubchem.add_argument(
+        "--no-odor",
+        action="store_true",
+        help="Skip PUG-View requests and do not add or update odor-only output columns",
+    )
     pubchem.set_defaults(handler=_handle_pubchem)
 
     pyrfume = subparsers.add_parser(
@@ -221,6 +236,7 @@ def _handle_pubchem(args: argparse.Namespace) -> RunSummary:
         args.input,
         client,
         identifier_column=args.identifier_column,
+        existing_cas_column=args.existing_cas_column,
         resolved_cas_column=args.resolved_cas_column,
         skip_patterns=args.skip_pattern,
         include_odor=not args.no_odor,

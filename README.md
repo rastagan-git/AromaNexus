@@ -57,6 +57,9 @@ Confirm the installation and review provider modes before a live run:
 ```bash
 aromanexus --version
 aromanexus sources
+
+# Equivalent module entry when the console launcher is unavailable
+python -m aromanexus --version
 ```
 
 ## Quick start
@@ -69,6 +72,12 @@ aromanexus pubchem compounds.xlsx --identifier-column "CAS Number"
 
 # Skip dataset-specific structural labels before a name lookup
 aromanexus pubchem compounds.xlsx --identifier-column "Name" --skip-pattern '^C\d+$'
+
+# Use an existing CAS column only to confirm candidates from a name lookup
+aromanexus pubchem compounds.xlsx --identifier-column "Name" --existing-cas-column "Existing CAS"
+
+# Skip PUG-View requests and omit the odor-only output column group
+aromanexus pubchem compounds.xlsx --no-odor
 
 # Select a worksheet by its exact name
 aromanexus pubchem compounds.xlsx --sheet "Data" --identifier-column "Name"
@@ -125,7 +134,11 @@ For XLSX-to-XLSX runs, AromaNexus starts from an immutable copy of the source pa
 
 [Openpyxl cannot preserve every OOXML feature](https://openpyxl.readthedocs.io/en/3.1/tutorial.html). AromaNexus therefore performs an in-memory trial round trip and stops before provider calls when it detects known unsafe content—such as drawing shapes, comments, ActiveX/OLE controls, slicers, threaded comments, VML, or digital signatures—or any package part that the trial would discard. Excel's optional calculation chain may be removed so spreadsheet software can rebuild it. An explicit CSV/TSV output is a flat export and cannot retain Excel-only content.
 
-By default, provenance columns include provider status, source URL, retrieval timestamp, cache hit, pinned version, license URL, and a diagnostic message. PubChem reports CAS resolution separately and populates `Resolved CAS` only when the input is a confirmed CAS or exactly one checksum-valid candidate remains. Multiple or missing candidates stay unresolved. Use `--no-provenance` only for legacy-shaped output.
+By default, provenance columns include provider status, source URL, retrieval timestamp, cache hit, pinned version, license URL, and a diagnostic message. `Retrieved At` records when a provider or cached representation was actually obtained. It stays empty for local pre-request outcomes such as an explicit `skipped` row, invalid input, or a network failure before any response. Use `--no-provenance` only for legacy-shaped output.
+
+PubChem reports CAS resolution separately and populates `Resolved CAS` only when the query itself is a confirmed CAS, a name lookup has exactly one checksum-valid candidate, or `--existing-cas-column` supplies a valid CAS that appears among the returned candidates. A conflicting or invalid existing CAS keeps the result unresolved; a blank cell falls back to the normal `unique`, `multiple`, or `missing` decision. For a `partial` provider result, only positive query or existing-CAS confirmation can resolve the row; decisions that depend on a complete candidate set remain `not_evaluated`. The original identifier and existing-CAS columns are never rewritten, and the CLI rejects an existing-CAS column name that overlaps an active output column.
+
+PubChem odor enrichment is enabled by default. `--no-odor` skips PUG-View requests and does not add or update `PubChem Odor`, `PubChem Odor Annotations`, `PubChem Odor Sources`, `PubChem Odor Source URLs`, or `PubChem Odor License URLs`. If those columns already exist in the input, they are preserved unchanged.
 
 ```bash
 # Choose an output explicitly

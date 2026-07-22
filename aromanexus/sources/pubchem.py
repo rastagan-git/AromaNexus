@@ -411,6 +411,7 @@ class PubChemClient:
             status=status,
             message=message,
             source_url=source_url,
+            retrieved_at="",
             version=PUBCHEM_VERSION,
             license_url=PUBCHEM_LICENSE_URL,
         )
