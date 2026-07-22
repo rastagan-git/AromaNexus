@@ -58,3 +58,9 @@ After every run, confirm:
 5. Remote strings beginning with `=`, `+`, `-`, or `@` are stored as literal text.
 6. Partial outputs are reported separately if a run is interrupted.
 7. `multiple`, `missing`, `not_evaluated`, and `skipped` PubChem CAS resolutions never contain an automatic `Resolved CAS`.
+8. XLSX worksheet order and names match the input, and supported non-target worksheet content and features are unchanged.
+9. Source formulas and cached results outside explicitly targeted output cells, plus styles, dimensions, freeze panes, filters, tables, data validation, conditional formatting, and workbook properties, remain present where applicable.
+10. Merged cells outside the selected tabular rectangle remain present; a merge intersecting that rectangle is rejected before provider access.
+11. The target worksheet used for post-run inspection is the same exact worksheet selected for enrichment, and per-sheet content digests are compared.
+
+For XLSX input, the default target is the first worksheet in workbook order. Pass `--sheet "Name"` to both the command and inspection helper when another worksheet is intended. Never pass `--sheet` for CSV or TSV; flat output cannot satisfy workbook-level preservation checks. XLSX preflight rejects known unsafe features and any OOXML package part dropped by its in-memory trial write. Excel's optional calculation chain may be removed and rebuilt by spreadsheet software.

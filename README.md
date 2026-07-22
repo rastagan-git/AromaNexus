@@ -7,7 +7,7 @@
 
 A provenance-aware toolkit for turning compound workbooks into traceable chemical-sensory datasets.
 
-AromaNexus connects chemical identity, gas-chromatographic retention indices, odor descriptors, thresholds, and optional olfactory-receptor assay evidence. It preserves the original table, normalizes provider results, and records where each enrichment came from. The resulting tables are practical inputs for downstream statistics, cheminformatics, and carefully scoped machine-learning experiments.
+AromaNexus connects chemical identity, gas-chromatographic retention indices, odor descriptors, thresholds, and optional olfactory-receptor assay evidence. For XLSX-to-XLSX runs it updates one selected worksheet while preserving supported workbook content, normalizes provider results, and records where each enrichment came from. The resulting tables are practical inputs for downstream statistics, cheminformatics, and carefully scoped machine-learning experiments.
 
 ```text
 XLSX / CSV / TSV
@@ -27,6 +27,7 @@ The original four workbook scripts remain available, but the package now provide
 - source-level status, URL, retrieval time, cache, version, license, and message fields;
 - conservative request pacing, bounded retries, and persistent caching;
 - atomic writes, periodic recovery checkpoints, and no accidental overwrite by default;
+- workbook-aware XLSX output that retains non-target sheets, untargeted source formulas, formatting, and common worksheet features;
 - optional PubChem, Pyrfume, and M2OR enrichment alongside the original NIST, MFFI, and ChemicalBook workflows.
 
 ## Installation
@@ -68,6 +69,9 @@ aromanexus pubchem compounds.xlsx --identifier-column "CAS Number"
 
 # Skip dataset-specific structural labels before a name lookup
 aromanexus pubchem compounds.xlsx --identifier-column "Name" --skip-pattern '^C\d+$'
+
+# Select a worksheet by its exact name
+aromanexus pubchem compounds.xlsx --sheet "Data" --identifier-column "Name"
 
 # Closest NIST RI to an experimentally calculated RI
 aromanexus nist-ri data.xlsx \
@@ -111,9 +115,15 @@ Run `aromanexus COMMAND --help` for column and provider-specific options. Global
 aromanexus --cache-dir .cache/aromanexus --timeout 30 pubchem compounds.xlsx
 ```
 
+For XLSX input, every table command processes the first worksheet in workbook order by default. Pass `--sheet "Data"` to select another worksheet by its exact, case-sensitive name. A missing worksheet is reported before any provider call; `--sheet` is not valid for CSV or TSV input.
+
 ### Output, checkpoints, and overwrite safety
 
 Every table command writes a sibling file by default, keeps the original row order and columns, and adds provider fields. For example, `compounds.xlsx` becomes `compounds_pubchem.xlsx` after a PubChem run.
+
+For XLSX-to-XLSX runs, AromaNexus starts from an immutable copy of the source package and overlays only enrichment cells on the selected worksheet. Non-target worksheet XML remains intact, as do supported source values, styles, row heights, column widths, freeze panes, filters, tables, data validation, conditional formatting, workbook properties, formulas, and cached formula results. Existing formulas are preserved outside cells explicitly targeted by an output field; deliberately targeting an existing formula cell replaces that cell as requested. Merged cells outside the selected tabular rectangle are preserved, while a merge intersecting that rectangle is rejected before provider access. Newly fetched formula-like text is escaped. The same preservation rules apply to `.partial.xlsx` checkpoints.
+
+[Openpyxl cannot preserve every OOXML feature](https://openpyxl.readthedocs.io/en/3.1/tutorial.html). AromaNexus therefore performs an in-memory trial round trip and stops before provider calls when it detects known unsafe content—such as drawing shapes, comments, ActiveX/OLE controls, slicers, threaded comments, VML, or digital signatures—or any package part that the trial would discard. Excel's optional calculation chain may be removed so spreadsheet software can rebuild it. An explicit CSV/TSV output is a flat export and cannot retain Excel-only content.
 
 By default, provenance columns include provider status, source URL, retrieval timestamp, cache hit, pinned version, license URL, and a diagnostic message. PubChem reports CAS resolution separately and populates `Resolved CAS` only when the input is a confirmed CAS or exactly one checksum-valid candidate remains. Multiple or missing candidates stay unresolved. Use `--no-provenance` only for legacy-shaped output.
 
@@ -128,7 +138,7 @@ aromanexus pubchem compounds.xlsx --checkpoint-every 10
 aromanexus pubchem compounds.xlsx --output compounds_pubchem.xlsx --force
 ```
 
-Checkpoints are named like `compounds_pubchem.partial.xlsx`. They are refreshed during the run, preserved if processing is interrupted, and removed after the final output succeeds. Existing destinations cause the command to stop unless `--force` is supplied. Prefer a new output path instead of overwriting the input.
+Checkpoints are named like `compounds_pubchem.partial.xlsx`. A required checkpoint path is validated before provider access, refreshed during the run, preserved if processing is interrupted, and removed after the final output succeeds. AromaNexus deletes only a checkpoint created by the current run; an unrelated or externally replaced `.partial` file is left alone. Existing destinations and required checkpoint paths cause the command to stop unless `--force` is supplied. The input path—or an alias of the same file—can never be used as an output or checkpoint path, including with `--force`.
 
 Successful HTTP responses and downloaded snapshots are cached under `~/.cache/aromanexus` by default. Set `AROMANEXUS_CACHE_DIR` or pass `--cache-dir` before the subcommand to use another location; the pre-rename cache environment variables remain accepted for compatibility.
 
@@ -158,14 +168,14 @@ The skill inspects a workbook, chooses the smallest suitable provider set, previ
 You can run its read-only workbook inspection helper directly:
 
 ```bash
-python .agents/skills/curate-aroma-data/scripts/inspect_workbook.py compounds.xlsx
+python .agents/skills/curate-aroma-data/scripts/inspect_workbook.py compounds.xlsx --sheet "Data"
 ```
 
 ## Legacy compatibility
 
 The pre-rename `flavor-data` command and `flavor_data_crawler` Python namespace remain compatibility aliases. New integrations should use `aromanexus`; existing automation does not need an immediate rewrite.
 
-The original scripts and Windows launchers are retained for existing workbook layouts:
+The original scripts and Windows launchers are retained for existing workbook layouts. They process the first worksheet; use the unified CLI when another worksheet must be selected.
 
 | Launcher | Script | Expected workbook | Required column(s) | Output |
 | --- | --- | --- | --- | --- |
