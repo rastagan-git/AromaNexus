@@ -15,7 +15,7 @@ from openpyxl.worksheet.table import Table, TableStyleInfo
 
 from aromanexus import excel_io
 from aromanexus.models import LookupResult
-from aromanexus.workflows import run_pubchem
+from aromanexus.workflows import PUBCHEM_COLUMN_MAP, PUBCHEM_ODOR_KEYS, run_pubchem
 
 
 class NoLookupPubChem:
@@ -621,7 +621,10 @@ def test_merged_table_body_and_column_limit_fail_before_provider(tmp_path: Path)
     worksheet = workbook.active
     worksheet.append(["Name"])
     worksheet.append(["C6"])
-    worksheet["XFC1"] = "Reserved edge cell"
+    assert {"query", "pubchem_url"}.issubset(PUBCHEM_COLUMN_MAP)
+    no_odor_output_count = sum(key not in PUBCHEM_ODOR_KEYS for key in PUBCHEM_COLUMN_MAP) + 3
+    first_unsafe_column = excel_io.MAX_EXCEL_COLUMNS - no_odor_output_count + 1
+    worksheet.cell(row=1, column=first_unsafe_column, value="Reserved edge cell")
     workbook.save(wide_source)
     workbook.close()
     wide_client = NoLookupPubChem()

@@ -35,12 +35,14 @@ class LookupResult:
         status: str,
         message: str,
         source_url: str = "",
+        retrieved_at: str = "",
     ) -> LookupResult:
         return cls(
             provider=provider,
             status=status,
             message=message,
             source_url=source_url,
+            retrieved_at=retrieved_at,
         )
 
     def provenance_columns(self, prefix: str | None = None) -> dict[str, Any]:

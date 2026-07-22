@@ -17,7 +17,7 @@ def test_missing_input_returns_user_error(capsys, tmp_path):
     assert "does not exist" in capsys.readouterr().err
 
 
-def test_pubchem_cli_forwards_repeatable_skip_patterns_and_resolved_column(monkeypatch, tmp_path):
+def test_pubchem_cli_forwards_resolution_skip_and_odor_options(monkeypatch, tmp_path):
     input_path = tmp_path / "input.csv"
     input_path.write_text("Name\nC6\n", encoding="utf-8")
     captured = {}
@@ -44,6 +44,9 @@ def test_pubchem_cli_forwards_repeatable_skip_patterns_and_resolved_column(monke
             "^Total$",
             "--resolved-cas-column",
             "Curated CAS",
+            "--existing-cas-column",
+            "Existing CAS",
+            "--no-odor",
             "--sheet",
             "Data",
         ]
@@ -53,6 +56,8 @@ def test_pubchem_cli_forwards_repeatable_skip_patterns_and_resolved_column(monke
     assert captured["input"] == input_path
     assert captured["kwargs"]["skip_patterns"] == [r"^C\d+$", "^Total$"]
     assert captured["kwargs"]["resolved_cas_column"] == "Curated CAS"
+    assert captured["kwargs"]["existing_cas_column"] == "Existing CAS"
+    assert captured["kwargs"]["include_odor"] is False
     assert captured["kwargs"]["sheet_name"] == "Data"
 
 

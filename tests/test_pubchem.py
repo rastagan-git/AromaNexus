@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from aromanexus.http import HttpResponse, RetrievalMetadata
+from aromanexus.http import HttpClientError, HttpResponse, RetrievalMetadata
 from aromanexus.sources.pubchem import (
     PubChemClient,
     parse_pubchem_identifiers,
@@ -131,6 +131,11 @@ class FakeHttp:
         return self.responses.pop(0)
 
 
+class FailingHttp:
+    def get(self, url: str, **_kwargs: Any) -> HttpResponse:
+        raise HttpClientError(url, 3, OSError("offline"))
+
+
 def test_pure_pubchem_parsers_handle_current_api_shapes() -> None:
     properties = parse_pubchem_properties(PROPERTIES)
     assert properties["cid"] == 240
@@ -221,8 +226,23 @@ def test_primary_not_found_and_malformed_payloads_are_explicit() -> None:
     malformed = client.lookup("also-not-real")
 
     assert missing.status == "not_found"
+    assert missing.retrieved_at == "2026-07-19T00:00:00+00:00"
     assert malformed.status == "parse_error"
+    assert malformed.retrieved_at == "2026-07-19T00:00:00+00:00"
     assert len(fake_http.calls) == 2
+
+
+def test_failure_before_any_pubchem_response_has_no_retrieval_timestamp() -> None:
+    invalid_client = PubChemClient(http_client=FakeHttp())
+    network_client = PubChemClient(http_client=FailingHttp())
+
+    invalid = invalid_client.lookup(" ")
+    network = network_client.lookup("benzaldehyde")
+
+    assert invalid.status == "invalid_input"
+    assert invalid.retrieved_at == ""
+    assert network.status == "network_error"
+    assert network.retrieved_at == ""
 
 
 def test_pubchem_default_rate_is_below_five_requests_per_second(tmp_path: Any) -> None:

@@ -6,7 +6,7 @@ import json
 import re
 import time
 from collections import Counter
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -102,9 +102,12 @@ def _apply_result(
     include_provenance: bool,
     prefix: str | None = None,
     key_map: dict[str, str] | None = None,
+    excluded_keys: Collection[str] = (),
 ) -> None:
     mapping = key_map or {}
     for key, value in result.values.items():
+        if key in excluded_keys:
+            continue
         _set_cell(frame, index, mapping.get(key, key), value)
     if include_provenance:
         _apply_provenance(frame, index, result, prefix=prefix)
@@ -339,6 +342,7 @@ def run_resolve_cas(
 
 
 PUBCHEM_COLUMN_MAP = {
+    "query": "query",
     "cid": "PubChem CID",
     "title": "PubChem Title",
     "iupac_name": "IUPAC Name",
@@ -349,6 +353,7 @@ PUBCHEM_COLUMN_MAP = {
     "inchi": "InChI",
     "inchikey": "InChIKey",
     "xlogp": "XLogP",
+    "pubchem_url": "pubchem_url",
     "synonyms": "PubChem Synonyms",
     "cas_numbers": "PubChem CAS Numbers",
     "odor": "PubChem Odor",
@@ -357,6 +362,15 @@ PUBCHEM_COLUMN_MAP = {
     "odor_source_urls": "PubChem Odor Source URLs",
     "odor_license_urls": "PubChem Odor License URLs",
 }
+PUBCHEM_ODOR_KEYS = frozenset(
+    {
+        "odor",
+        "odor_annotations",
+        "odor_sources",
+        "odor_source_urls",
+        "odor_license_urls",
+    }
+)
 
 
 def _compile_skip_patterns(patterns: Iterable[str] | str | None) -> tuple[re.Pattern[str], ...]:
@@ -386,6 +400,19 @@ def _valid_cas_candidates(value: Any) -> list[str]:
     return candidates
 
 
+def _has_cell_value(value: Any) -> bool:
+    """Return whether a scalar table cell contains a meaningful value."""
+
+    if value is None:
+        return False
+    try:
+        if bool(pd.isna(value)):
+            return False
+    except (TypeError, ValueError):
+        pass
+    return bool(clean_text(value))
+
+
 def _apply_pubchem_resolution(
     frame: pd.DataFrame,
     index: Any,
@@ -393,18 +420,38 @@ def _apply_pubchem_resolution(
     result: LookupResult,
     *,
     resolved_cas_column: str,
+    existing_cas: Any = None,
 ) -> None:
     candidates = _valid_cas_candidates(result.values.get("cas_numbers"))
     resolved_cas = ""
+    query_cas = normalize_cas(identifier)
+    has_existing_cas = _has_cell_value(existing_cas)
+    input_cas = normalize_cas(existing_cas) if has_existing_cas else ""
     if result.status == "skipped":
         resolution = "skipped"
-    elif result.status != "ok":
-        resolution = "not_evaluated"
-    else:
-        query_cas = normalize_cas(identifier)
+    elif result.status == "partial":
         if is_valid_cas(query_cas):
             resolution = "query_confirmed"
             resolved_cas = query_cas
+        elif is_valid_cas(input_cas) and input_cas in candidates:
+            resolution = "input_cas_confirmed"
+            resolved_cas = input_cas
+        else:
+            resolution = "not_evaluated"
+    elif result.status != "ok":
+        resolution = "not_evaluated"
+    else:
+        if is_valid_cas(query_cas):
+            resolution = "query_confirmed"
+            resolved_cas = query_cas
+        elif has_existing_cas:
+            if not is_valid_cas(input_cas):
+                resolution = "input_cas_invalid"
+            elif input_cas in candidates:
+                resolution = "input_cas_confirmed"
+                resolved_cas = input_cas
+            else:
+                resolution = "input_cas_conflict"
         elif len(candidates) == 1:
             resolution = "unique"
             resolved_cas = candidates[0]
@@ -425,6 +472,7 @@ def run_pubchem(
     output_path: str | Path | None = None,
     sheet_name: str | None = None,
     identifier_column: str = "CAS Number",
+    existing_cas_column: str | None = None,
     resolved_cas_column: str = "Resolved CAS",
     skip_patterns: Iterable[str] | str | None = None,
     include_odor: bool = True,
@@ -434,6 +482,11 @@ def run_pubchem(
     progress: ProgressCallback = console_progress,
 ) -> RunSummary:
     compiled_skip_patterns = _compile_skip_patterns(skip_patterns)
+    planned_pubchem_columns = tuple(
+        output_column
+        for key, output_column in PUBCHEM_COLUMN_MAP.items()
+        if include_odor or key not in PUBCHEM_ODOR_KEYS
+    )
     frame, destination, context = _prepare_run(
         input_path,
         output_path,
@@ -442,14 +495,29 @@ def run_pubchem(
         checkpoint_every=checkpoint_every,
         force=force,
         planned_columns=(
-            *PUBCHEM_COLUMN_MAP.values(),
+            *planned_pubchem_columns,
             "PubChem CAS Resolution",
             "PubChem CAS Candidate Count",
             resolved_cas_column,
             *(provenance_column_names("PubChem") if include_provenance else ()),
         ),
     )
-    require_columns(frame, identifier_column)
+    required_columns = [identifier_column]
+    if existing_cas_column is not None:
+        required_columns.append(existing_cas_column)
+    require_columns(frame, *required_columns)
+    active_output_columns = {
+        *planned_pubchem_columns,
+        "PubChem CAS Resolution",
+        "PubChem CAS Candidate Count",
+        resolved_cas_column,
+        *(provenance_column_names("PubChem") if include_provenance else ()),
+    }
+    if existing_cas_column is not None and existing_cas_column in active_output_columns:
+        raise ValueError(
+            f"Existing CAS column {existing_cas_column!r} conflicts with an active PubChem "
+            "output column; choose distinct input and output column names."
+        )
     statuses: Counter[str] = Counter()
     total = len(frame)
     for current, index, row in _indices(frame):
@@ -474,6 +542,7 @@ def run_pubchem(
             include_provenance=include_provenance,
             prefix="PubChem",
             key_map=PUBCHEM_COLUMN_MAP,
+            excluded_keys=() if include_odor else PUBCHEM_ODOR_KEYS,
         )
         _apply_pubchem_resolution(
             frame,
@@ -481,6 +550,7 @@ def run_pubchem(
             identifier,
             result,
             resolved_cas_column=resolved_cas_column,
+            existing_cas=(row[existing_cas_column] if existing_cas_column is not None else None),
         )
         statuses[result.status] += 1
         progress(current, total, f"PubChem: {identifier} -> {result.status}")

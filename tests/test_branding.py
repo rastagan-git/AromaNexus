@@ -3,6 +3,8 @@ import sys
 import tomllib
 from pathlib import Path
 
+import pytest
+
 from aromanexus import __version__
 from aromanexus.cli import main
 from aromanexus.models import LookupResult
@@ -48,3 +50,38 @@ def test_legacy_module_cli_forwards_to_aromanexus():
         text=True,
     )
     assert completed.stdout.strip() == f"aromanexus {__version__}"
+
+
+@pytest.mark.parametrize("argument", ["--version", "--help"])
+def test_primary_module_cli_matches_console_module(argument):
+    package_entry = subprocess.run(
+        [sys.executable, "-m", "aromanexus", argument],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    console_module = subprocess.run(
+        [sys.executable, "-m", "aromanexus.cli", argument],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert package_entry.returncode == console_module.returncode == 0
+    assert package_entry.stdout == console_module.stdout
+    assert package_entry.stderr == console_module.stderr
+
+
+def test_primary_module_cli_preserves_argparse_error_exit_code():
+    completed = subprocess.run(
+        [sys.executable, "-m", "aromanexus"],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 2
+    assert "command" in completed.stderr
